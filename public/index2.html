@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>4元數 Node 紀錄表 2 - 雲端共編版</title>
+  <!-- 引入 html2canvas 畫布轉換套件 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f4f4f9;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      box-sizing: border-box;
+    }
+
+    /* 上方控制列與分頁器 */
+    .header-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 10px;
+      align-items: center;
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      z-index: 10;
+    }
+
+    .pagination {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      background: #edf2f7;
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e0;
+      flex-grow: 1;
+      justify-content: center;
+    }
+
+    .page-btn {
+      cursor: pointer;
+      border: none;
+      background: #cbd5e0;
+      border-radius: 4px;
+      padding: 6px 16px;
+      font-weight: bold;
+      font-size: 14px;
+      color: #2d3748;
+      transition: 0.2s;
+    }
+
+    .page-btn:hover:not(:disabled) {
+      background: #a0aec0;
+    }
+
+    .page-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .page-label {
+      font-weight: bold;
+      font-size: 16px;
+      color: #2d3748;
+      min-width: 80px;
+      text-align: center;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      cursor: pointer;
+      border: none;
+      background: #3182ce;
+      color: white;
+      border-radius: 6px;
+      font-weight: bold;
+      transition: 0.2s;
+    }
+
+    .btn:hover {
+      background: #2b6cb0;
+    }
+
+    .btn.export {
+      background: #38a169;
+    }
+
+    .btn.export:hover {
+      background: #2f855a;
+    }
+
+    .btn.save {
+      background: #d69e2e;
+    }
+
+    .btn.save:hover {
+      background: #b7791f;
+    }
+
+    .btn.load {
+      background: #805ad5;
+    }
+
+    .btn.load:hover {
+      background: #6b46c1;
+    }
+
+    .btn.undo {
+      background: #e53e3e;
+    }
+
+    .btn.undo:hover {
+      background: #c53030;
+    }
+
+    /* 同步狀態燈號 */
+    .sync-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: bold;
+      font-size: 14px;
+      color: #4a5568;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: #e2e8f0;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #a0aec0;
+    }
+
+    .status-dot.online {
+      background: #48bb78;
+      box-shadow: 0 0 5px #48bb78;
+    }
+
+    .status-dot.syncing {
+      background: #ecc94b;
+      box-shadow: 0 0 5px #ecc94b;
+    }
+
+    #fileInput {
+      display: none;
+    }
+
+    /* 內容區域 */
+    .tab-contents {
+      flex-grow: 1;
+      overflow: auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      position: relative;
+    }
+
+    .tab-content {
+      display: none;
+      min-width: max-content;
+      padding: 20px;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* 樹狀圖結構 */
+    .tree-container {
+      display: flex;
+      flex-direction: column-reverse;
+      align-items: center;
+      gap: 80px;
+      margin-top: 20px;
+      padding: 40px;
+      position: relative;
+      background: white;
+    }
+
+    .tree-row {
+      display: flex;
+      justify-content: center;
+      gap: 45px;
+      position: relative;
+      z-index: 2;
+    }
+
+    /* 參照列樣式 */
+    .ref-row {
+      opacity: 0.8;
+      padding-bottom: 30px;
+      margin-bottom: 10px;
+      border-bottom: none;
+    }
+
+    .ref-label {
+      position: absolute;
+      bottom: calc(100% + 5px);
+      left: 50%;
+      transform: translateX(-50%);
+      color: #718096;
+      font-weight: bold;
+      font-size: 14px;
+      background: white;
+      padding: 5px 10px;
+      border-radius: 6px;
+      white-space: nowrap;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 15px;
+      z-index: 10;
+    }
+
+    .ref-node {
+      cursor: not-allowed !important;
+      transform: scale(0.95);
+    }
+
+    .ref-node input {
+      cursor: not-allowed;
+      pointer-events: none;
+      background: rgba(255, 255, 255, 0.3) !important;
+      border-color: transparent !important;
+    }
+
+    /* 背景箭頭畫布 */
+    .tree-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Node 樣式 */
+    .node {
+      min-width: 64px;
+      min-height: 64px;
+      display: grid;
+      grid-auto-flow: column;
+      grid-template-rows: auto auto;
+      grid-template-columns: auto auto;
+      gap: 4px;
+      border: 3px solid #718096;
+      padding: 6px;
+      border-radius: 8px;
+      background-color: #ffffff;
+      box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
+      position: relative;
+      transition: border-color 0.2s, background-color 0.2s;
+    }
+
+    /* 控制參照層顯示/隱藏 */
+    .hide-ref-layer .exp-node {
+      display: none !important;
+    }
+
+    .node.green {
+      background-color: #c6f6d5;
+      border-color: #38a169;
+    }
+
+    .node.red {
+      background-color: #fed7d7;
+      border-color: #e53e3e;
+    }
+
+    /* 游標懸停時的 O 與 X 選擇器 */
+    .node:not(.ref-node) .color-picker {
+      position: absolute;
+      top: -38px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: none;
+      gap: 6px;
+      background: #ffffff;
+      padding: 5px;
+      border-radius: 6px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      border: 1px solid #cbd5e0;
+      z-index: 100;
+    }
+
+    .node:hover:not(.ref-node) .color-picker {
+      display: flex;
+    }
+
+    .btn-color {
+      width: 26px;
+      height: 26px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .btn-color.btn-green {
+      background: #38a169;
+    }
+
+    .btn-color.btn-red {
+      background: #e53e3e;
+    }
+
+    .btn-color:hover {
+      filter: brightness(1.1);
+    }
+
+    /* 輸入框樣式 */
+    .node input {
+      width: 3ch;
+      min-width: 3ch;
+      border: 1px solid #e2e8f0;
+      text-align: center;
+      font-size: 16px;
+      font-family: 'Courier New', Courier, monospace;
+      font-weight: bold;
+      background: rgba(255, 255, 255, 0.6);
+      box-sizing: border-box;
+      outline: none;
+      border-radius: 3px;
+      padding: 2px 4px;
+      transition: border 0.1s;
+    }
+
+    .node input:focus {
+      border: 2px solid #3182ce;
+      background: #fff;
+    }
+  </style>
+</head>
+
+<body class="hide-ref-layer">
+
+  <div class="header-controls">
+    <button class="btn" onclick="window.createTab()">+ 新增 Lv 分頁</button>
+    <div class="pagination">
+      <button class="page-btn" id="prev-btn" onclick="window.prevTab()" disabled>◀ 上一頁</button>
+      <span class="page-label" id="current-tab-label">載入中...</span>
+      <button class="page-btn" id="next-btn" onclick="window.nextTab()" disabled>下一頁 ▶</button>
+    </div>
+
+    <div class="sync-status" id="sync-status">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">連線中...</span>
+    </div>
+
+    <button class="btn export" onclick="window.exportToImage()">🖼️ 匯出當前畫面</button>
+    <button class="btn save" onclick="window.saveData()">💾 備份 (JSON)</button>
+    <button class="btn load" onclick="document.getElementById('fileInput').click()">📂 匯入覆蓋</button>
+    <input type="file" id="fileInput" accept=".json" onchange="window.loadData(event)">
+  </div>
+
+  <div class="tab-contents" id="tab-contents"></div>
+
+  <!-- 使用 module 引入 Firebase v10 SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+    // 1. Firebase 初始化
+    const firebaseConfig = {
+      apiKey: "AIzaSyDvHGQqXkdPx496CSDMQ_aU7Q6wbz28D-g",
+      authDomain: "doublechess-fe12e.firebaseapp.com",
+      projectId: "doublechess-fe12e",
+      storageBucket: "doublechess-fe12e.firebasestorage.app",
+      messagingSenderId: "1062731143335",
+      appId: "1:1062731143335:web:a69ea9a1bc97798f37a382"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const docRef = doc(db, 'research_data', 'board_state_2');
+
+    // 2. 狀態變數
+    let tabsList = [];
+    let currentIndex = 0;
+    let isSyncingFromCloud = false; // 避免雲端更新時觸發二次上傳
+    let syncTimeout = null;
+
+    // 3. UI 燈號控制
+    function setSyncStatus(status) {
+      const dot = document.getElementById('status-dot');
+      const text = document.getElementById('status-text');
+      dot.className = 'status-dot';
+      if (status === 'online') {
+        dot.classList.add('online'); text.innerText = '已連線同步';
+      } else if (status === 'syncing') {
+        dot.classList.add('syncing'); text.innerText = '儲存中...';
+      } else {
+        text.innerText = '離線 / 錯誤';
+      }
+    }
+
+    // 4. 抓取當前所有 DOM 資料轉為 JSON Object
+    function getAppState() {
+      const data = [];
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        const tabData = { id: tab.id, rows: [] };
+        tab.querySelectorAll('.tree-row:not(.ref-row)').forEach(row => {
+          const rowData = { r: row.dataset.r, nodes: [] };
+          row.querySelectorAll('.node').forEach(node => {
+            const nodeInfo = {
+              i: node.dataset.i,
+              color: node.classList.contains('green') ? 'green' : node.classList.contains('red') ? 'red' : 'white',
+              vals: {}
+            };
+            node.querySelectorAll('input').forEach(input => {
+              nodeInfo.vals[input.dataset.pos] = input.value;
+            });
+            rowData.nodes.push(nodeInfo);
+          });
+          tabData.rows.push(rowData);
+        });
+        data.push(tabData);
+      });
+      return data;
+    }
+
+    // 5. 將資料推播至 Firebase 雲端 (Debounce 防抖)
+    function scheduleSyncToCloud() {
+      if (isSyncingFromCloud) return; // 如果正在接收雲端資料，不反向推播
+
+      setSyncStatus('syncing');
+      clearTimeout(syncTimeout);
+      syncTimeout = setTimeout(async () => {
+        try {
+          const currentState = getAppState();
+          await setDoc(docRef, { state: currentState, timestamp: new Date().toISOString() });
+          setSyncStatus('online');
+        } catch (error) {
+          console.error("Firebase 儲存失敗:", error);
+          setSyncStatus('error');
+        }
+      }, 600); // 停止打字/操作 0.6 秒後自動儲存
+    }
+
+    // 6. 接收 Firebase 雲端資料並更新 UI (防游標跳動)
+    function applyDataToUI(data) {
+      isSyncingFromCloud = true; // 鎖住，避免觸發 scheduleSyncToCloud
+
+      // a. 建立缺少的 Tab
+      data.forEach(tabData => {
+        if (!tabsList.includes(tabData.id)) window.createTab(tabData.id, false);
+      });
+
+      // b. 更新每一列與節點
+      data.forEach(tabData => {
+        const container = document.getElementById(`tree-${tabData.id}`);
+        if (!container) return;
+
+        // 補足列數
+        let currentRows = container.querySelectorAll('.tree-row:not(.ref-row)');
+        while (currentRows.length < tabData.rows.length) {
+          window.addRow(tabData.id, null, false);
+          currentRows = container.querySelectorAll('.tree-row:not(.ref-row)');
+        }
+        // 刪除多餘的列數
+        while (currentRows.length > tabData.rows.length) {
+          container.removeChild(currentRows[currentRows.length - 1]);
+          currentRows = container.querySelectorAll('.tree-row:not(.ref-row)');
+        }
+
+        // c. 更新內容 (避開目前 focus 的輸入框)
+        tabData.rows.forEach(rowData => {
+          const rowDiv = container.querySelector(`.tree-row:not(.ref-row)[data-r="${rowData.r}"]`);
+          if (rowDiv) {
+            rowData.nodes.forEach(nodeData => {
+              const node = rowDiv.querySelector(`.node[data-i="${nodeData.i}"]`);
+              if (node) {
+                if (!node.classList.contains(nodeData.color)) {
+                  node.className = `node ${nodeData.color}`;
+                }
+                for (const pos in nodeData.vals) {
+                  const input = node.querySelector(`input[data-pos="${pos}"]`);
+                  // 關鍵：如果我正在打字，不要用雲端的舊資料覆蓋我的游標
+                  if (input && input !== document.activeElement) {
+                    if (input.value !== nodeData.vals[pos]) {
+                      input.value = nodeData.vals[pos];
+                      input.style.width = Math.max(3, input.value.length + 1) + 'ch';
+                    }
+                  }
+                }
+              }
+            });
+          }
+        });
+
+        updateReferenceRow(tabData.id);
+        drawArrows(tabData.id);
+        drawExperimentalNodes(tabData.id);
+      });
+
+      if (tabsList.length > 0 && document.querySelectorAll('.tab-content.active').length === 0) {
+        window.switchTab(0);
+      }
+
+      isSyncingFromCloud = false; // 解除鎖定
+    }
+
+    // ================= 核心邏輯區塊 =================
+
+    window.createTab = function (tabIdName = null, triggerSync = true) {
+      const tabId = tabIdName || `Lv_${tabsList.length}`;
+      if (!tabsList.includes(tabId)) {
+        tabsList.push(tabId);
+      }
+
+      const tabContent = document.createElement('div');
+      tabContent.id = tabId; tabContent.className = 'tab-content';
+
+      const controlsDiv = document.createElement('div');
+      controlsDiv.style.textAlign = 'center'; controlsDiv.style.marginBottom = '15px';
+
+      const addRowBtn = document.createElement('button');
+      addRowBtn.className = 'btn'; addRowBtn.style.marginRight = '10px';
+      addRowBtn.innerText = '⬆️ 往上新增一列 Node (+2)';
+      addRowBtn.onclick = () => { window.addRow(tabId); drawArrows(tabId); };
+
+      const undoRowBtn = document.createElement('button');
+      undoRowBtn.className = 'btn undo'; undoRowBtn.innerText = '⬇️ 刪除最上列 (還原)';
+      undoRowBtn.onclick = () => window.removeRow(tabId);
+
+      controlsDiv.appendChild(addRowBtn); controlsDiv.appendChild(undoRowBtn);
+
+      const treeContainer = document.createElement('div');
+      treeContainer.className = 'tree-container'; treeContainer.id = `tree-${tabId}`;
+
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'tree-svg');
+      svg.innerHTML = `<defs><marker id="arrow-${tabId}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#a0aec0" /></marker></defs>`;
+      treeContainer.appendChild(svg);
+
+      tabContent.appendChild(controlsDiv); tabContent.appendChild(treeContainer);
+      document.getElementById('tab-contents').appendChild(tabContent);
+
+      if (!tabIdName) {
+        window.addRow(tabId, null, false);
+        window.switchTab(tabsList.length - 1);
+      }
+
+      if (triggerSync) scheduleSyncToCloud();
+      return tabId;
+    };
+
+    window.switchTab = function (index) {
+      if (index < 0 || index >= tabsList.length) return;
+      currentIndex = index;
+      const tabId = tabsList[currentIndex];
+
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.toggle('active', content.id === tabId);
+      });
+
+      const nMatch = tabId.match(/Lv_(\d+)/);
+      const lvNum = nMatch ? parseInt(nMatch[1]) : 0;
+      const displayLabel = lvNum === 0 ? "Lv 4n" : `Lv 4n+${lvNum}`;
+      document.getElementById('current-tab-label').innerText = displayLabel;
+      document.getElementById('prev-btn').disabled = (currentIndex === 0);
+      document.getElementById('next-btn').disabled = (currentIndex === tabsList.length - 1);
+
+      updateReferenceRow(tabId);
+      setTimeout(() => {
+        drawArrows(tabId);
+        drawExperimentalNodes(tabId);
+      }, 50);
+    };
+
+    window.prevTab = function () { window.switchTab(currentIndex - 1); };
+    window.nextTab = function () { window.switchTab(currentIndex + 1); };
+
+    function updateReferenceRow(tabId) {
+      const nMatch = tabId.match(/Lv_(\d+)/);
+      if (!nMatch) return;
+      const n = parseInt(nMatch[1]);
+      if (n === 0) return;
+
+      const sourceN = n % 2 !== 0 ? n - 1 : n - 2;
+      const sourceTabId = `Lv_${sourceN}`;
+      const sourceContainer = document.getElementById(`tree-${sourceTabId}`);
+      if (!sourceContainer) return;
+
+      const sourceRows = Array.from(sourceContainer.querySelectorAll('.tree-row:not(.ref-row)'));
+      if (sourceRows.length === 0) return;
+      const lastSourceRow = sourceRows.reduce((prev, current) => parseInt(current.dataset.r) > parseInt(prev.dataset.r) ? current : prev);
+
+      const container = document.getElementById(`tree-${tabId}`);
+      if (!container) return;
+
+      const oldRefRow = container.querySelector('.ref-row');
+      if (oldRefRow) oldRefRow.remove();
+
+      const refRow = document.createElement('div');
+      refRow.className = 'tree-row ref-row';
+
+      const label = document.createElement('div');
+      label.className = 'ref-label';
+      const sourceLabel = sourceN === 0 ? "4n" : `4n+${sourceN}`;
+      label.innerHTML = `<span>[ 參照自 Lv ${sourceLabel} 的最後一列 ]</span>`;
+
+      if (n >= 1) {
+        const toggleLabel = document.createElement('label');
+        toggleLabel.style.display = 'flex';
+        toggleLabel.style.alignItems = 'center';
+        toggleLabel.style.gap = '5px';
+        toggleLabel.style.cursor = 'pointer';
+        toggleLabel.style.fontSize = '18px';
+        toggleLabel.style.fontWeight = 'bold';
+        toggleLabel.style.color = '#4a5568';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.style.width = '20px';
+        checkbox.style.height = '20px';
+        checkbox.checked = !document.body.classList.contains('hide-ref-layer');
+        checkbox.addEventListener('change', function () {
+          if (this.checked) document.body.classList.remove('hide-ref-layer');
+          else document.body.classList.add('hide-ref-layer');
+        });
+
+        toggleLabel.appendChild(checkbox);
+        const prevN = n - 1;
+        const prevLabel = prevN === 0 ? "4n" : `4n+${prevN}`;
+        toggleLabel.appendChild(document.createTextNode(`顯示 Lv ${prevLabel}`));
+        label.appendChild(toggleLabel);
+      }
+
+      refRow.appendChild(label);
+
+      const nodes = lastSourceRow.querySelectorAll('.node');
+      nodes.forEach(sourceNode => {
+        const newNode = document.createElement('div');
+        const colorClass = sourceNode.classList.contains('green') ? 'green' : sourceNode.classList.contains('red') ? 'red' : 'white';
+        newNode.className = `node ref-node ${colorClass}`;
+
+        ['a', 'b', 'c', 'd'].forEach(pos => {
+          const sourceInput = sourceNode.querySelector(`input[data-pos="${pos}"]`);
+          const input = document.createElement('input');
+          input.type = 'text'; input.dataset.pos = pos;
+          input.value = sourceInput ? sourceInput.value : '';
+          input.readOnly = true;
+          input.style.width = sourceInput ? sourceInput.style.width : '3ch';
+          newNode.appendChild(input);
+        });
+        refRow.appendChild(newNode);
+      });
+
+      container.appendChild(refRow);
+    }
+
+    function drawExperimentalNodes(tabId) {
+      const nMatch = tabId.match(/Lv_(\d+)/);
+      if (!nMatch) return;
+      const n = parseInt(nMatch[1]);
+      if (n < 1) return; // 從 Lv 1 開始
+
+      const container = document.getElementById(`tree-${tabId}`);
+      if (!container) return;
+
+      // 清除舊的疊加節點
+      container.querySelectorAll('.exp-node').forEach(n => n.remove());
+
+      const sourceTabId = `Lv_${n - 1}`;
+      const sourceContainer = document.getElementById(`tree-${sourceTabId}`);
+      if (!sourceContainer) return; // 如果上一層還沒建立則跳過
+
+      const sourceRows = Array.from(sourceContainer.querySelectorAll('.tree-row:not(.ref-row)'));
+      if (sourceRows.length === 0) return;
+
+      const containerRect = container.getBoundingClientRect();
+
+      // 決定要提取的參照層列 (r)
+      let rowsToExtract = [];
+      if (n % 2 !== 0) {
+        // n為奇數時，參照層(偶數層)只顯示除了第一列(r=0)和最後一列以外的節點
+        rowsToExtract = sourceRows.filter((row, idx) => idx !== 0 && idx !== sourceRows.length - 1);
+      } else {
+        // n為偶數時，參照層(奇數層)只顯示除了第一列(r=0)以外的節點
+        rowsToExtract = sourceRows.filter((row, idx) => idx !== 0);
+      }
+
+      rowsToExtract.forEach(sourceRow => {
+        const r_prev = parseInt(sourceRow.dataset.r);
+        const sourceNodes = sourceRow.querySelectorAll('.node');
+
+        sourceNodes.forEach(sourceNode => {
+          const i_prev = parseInt(sourceNode.dataset.i);
+
+          // 規則 1: lv(n-1)的節點與lv(n)的節點由第一列開始對齊
+          // 所以座標直接對應到該層的相同 r 與 i
+          const node1 = container.querySelector(`.tree-row[data-r="${r_prev}"] .node[data-i="${i_prev}"]`);
+
+          if (node1) {
+            const rect1 = node1.getBoundingClientRect();
+
+            // 取得 Lv(n) 該節點的中心點
+            const baseX = (rect1.left + rect1.right) / 2 - containerRect.left + container.scrollLeft;
+            const baseY = (rect1.top + rect1.bottom) / 2 - containerRect.top + container.scrollTop;
+
+            // X 軸水平偏移取消 (0px)
+            const xOffset = 0;
+            // Y 軸垂直偏移到間隙中央：(節點高度 + 垂直gap 80px) / 2
+            const yOffset = (rect1.height + 80) / 2;
+
+            const centerX = baseX + xOffset;
+            const centerY = baseY - yOffset; // Y 座標往上是減
+
+            // 建立疊加節點 (Ghost Node)
+            const expNode = document.createElement('div');
+            const colorClass = sourceNode.classList.contains('green') ? 'green' : sourceNode.classList.contains('red') ? 'red' : 'white';
+            expNode.className = `node exp-node ${colorClass}`;
+
+            // 設定樣式與位移
+            expNode.style.position = 'absolute';
+            expNode.style.left = `${centerX}px`;
+            expNode.style.top = `${centerY}px`;
+            expNode.style.transform = `translate(-50%, -50%) scale(0.85)`;
+            expNode.style.zIndex = '1'; // 確保在背景但高於線條
+            expNode.style.opacity = '0.5'; // 半透明圖層
+            expNode.style.pointerEvents = 'none'; // 無法點擊
+
+            ['a', 'b', 'c', 'd'].forEach(pos => {
+              const sourceInput = sourceNode.querySelector(`input[data-pos="${pos}"]`);
+              const input = document.createElement('input');
+              input.type = 'text'; input.dataset.pos = pos;
+              input.value = sourceInput ? sourceInput.value : '';
+              input.readOnly = true;
+              input.style.width = sourceInput ? sourceInput.style.width : '3ch';
+              input.style.pointerEvents = 'none';
+              input.style.background = 'transparent';
+              input.style.borderColor = 'transparent';
+              expNode.appendChild(input);
+            });
+
+            container.appendChild(expNode);
+          }
+        });
+      });
+    }
+
+    window.addRow = function (tabId, r = null, triggerSync = true) {
+      const container = document.getElementById(`tree-${tabId}`);
+      const rowsCount = container.querySelectorAll('.tree-row:not(.ref-row)').length;
+      const rowIndex = r !== null ? r : rowsCount;
+
+      const rowDiv = document.createElement('div');
+      rowDiv.className = 'tree-row'; rowDiv.dataset.r = rowIndex;
+
+      const numNodes = 2 * rowIndex + 1;
+      for (let i = 0; i < numNodes; i++) {
+        rowDiv.appendChild(createNode(rowIndex, i, tabId));
+      }
+
+      const refRow = container.querySelector('.ref-row');
+      if (refRow) container.insertBefore(rowDiv, refRow);
+      else container.appendChild(rowDiv);
+
+      drawExperimentalNodes(tabId); // 重繪疊加層
+      if (triggerSync) scheduleSyncToCloud();
+      return rowDiv;
+    };
+
+    window.removeRow = function (tabId) {
+      const container = document.getElementById(`tree-${tabId}`);
+      if (!container) return;
+      const rows = container.querySelectorAll('.tree-row:not(.ref-row)');
+
+      if (rows.length <= 1) {
+        alert("已經是第一列基礎節點，無法再還原了！"); return;
+      }
+      container.removeChild(rows[rows.length - 1]);
+      drawArrows(tabId);
+      drawExperimentalNodes(tabId); // 重繪疊加層
+      scheduleSyncToCloud();
+    };
+
+    function createNode(r, i, tabId) {
+      const node = document.createElement('div');
+      node.className = 'node white'; node.dataset.i = i;
+
+      const picker = document.createElement('div');
+      picker.className = 'color-picker';
+      picker.innerHTML = `
+        <button class="btn-color btn-green" onclick="window.setNodeColor(event, this, 'green')">O</button>
+        <button class="btn-color btn-red" onclick="window.setNodeColor(event, this, 'red')">X</button>
+    `;
+      node.appendChild(picker);
+
+      ['a', 'b', 'c', 'd'].forEach(pos => {
+        const input = document.createElement('input');
+        input.type = 'text'; input.dataset.pos = pos;
+
+        input.oninput = () => {
+          input.style.width = Math.max(3, input.value.length + 1) + 'ch';
+          syncSymmetricNode(input, r, i);
+          setTimeout(() => drawArrows(tabId), 50);
+          scheduleSyncToCloud(); // 輸入時觸發雲端同步
+        };
+
+        input.onkeydown = (e) => handleArrowKeys(e, input);
+        node.appendChild(input);
+      });
+      return node;
+    }
+
+    window.setNodeColor = function (event, btnElement, colorClass) {
+      event.stopPropagation();
+      const node = btnElement.closest('.node');
+      if (node.classList.contains(colorClass)) node.className = 'node white';
+      else node.className = `node ${colorClass}`;
+      scheduleSyncToCloud();
+    };
+
+    function syncSymmetricNode(input, r, i) {
+      const val = input.value; const pos = input.dataset.pos;
+      const targetI = 2 * r - i;
+      if (targetI === i) return;
+
+      const rowDiv = input.closest('.tree-row');
+      const targetNode = rowDiv.querySelector(`.node[data-i="${targetI}"]`);
+      if (!targetNode) return;
+
+      let targetPos = pos === 'a' ? 'b' : pos === 'b' ? 'a' : pos === 'c' ? 'd' : 'c';
+      const targetInput = targetNode.querySelector(`input[data-pos="${targetPos}"]`);
+      if (targetInput) {
+        targetInput.value = val;
+        targetInput.style.width = Math.max(3, val.length + 1) + 'ch';
+      }
+    }
+
+    function handleArrowKeys(e, input) {
+      const node = input.closest('.node'); const rowDiv = input.closest('.tree-row');
+      const pos = input.dataset.pos; const i = parseInt(node.dataset.i);
+
+      const focusPos = (targetNode, p) => {
+        if (targetNode) {
+          const target = targetNode.querySelector(`input[data-pos="${p}"]`);
+          if (target && !target.readOnly) { target.focus(); e.preventDefault(); }
+        }
+      };
+
+      if (e.key === 'ArrowUp') {
+        if (pos === 'b') focusPos(node, 'a');
+        if (pos === 'd') focusPos(node, 'c');
+      } else if (e.key === 'ArrowDown') {
+        if (pos === 'a') focusPos(node, 'b');
+        if (pos === 'c') focusPos(node, 'd');
+      } else if (e.key === 'ArrowLeft') {
+        if (input.selectionStart === 0) {
+          if (pos === 'c') focusPos(node, 'a');
+          else if (pos === 'd') focusPos(node, 'b');
+          else if (pos === 'a' || pos === 'b') focusPos(rowDiv.querySelector(`.node[data-i="${i - 1}"]`), pos === 'a' ? 'c' : 'd');
+        }
+      } else if (e.key === 'ArrowRight') {
+        if (input.selectionEnd === input.value.length) {
+          if (pos === 'a') focusPos(node, 'c');
+          else if (pos === 'b') focusPos(node, 'd');
+          else if (pos === 'c' || pos === 'd') focusPos(rowDiv.querySelector(`.node[data-i="${i + 1}"]`), pos === 'c' ? 'a' : 'b');
+        }
+      }
+    }
+
+    function drawArrows(tabId) {
+      const container = document.getElementById(`tree-${tabId}`);
+      if (!container) return;
+      const svg = container.querySelector('svg.tree-svg');
+      if (!svg) return;
+
+      svg.innerHTML = svg.querySelector('defs').outerHTML;
+      svg.style.width = container.scrollWidth + 'px';
+      svg.style.height = container.scrollHeight + 'px';
+
+      const containerRect = container.getBoundingClientRect();
+      const rows = container.querySelectorAll('.tree-row:not(.ref-row)');
+
+      for (let r = 0; r < rows.length; r++) {
+        const currentRow = container.querySelector(`.tree-row:not(.ref-row)[data-r="${r}"]`);
+        const nextRow = container.querySelector(`.tree-row:not(.ref-row)[data-r="${r + 1}"]`);
+        if (!currentRow) continue;
+
+        const numNodes = 2 * r + 1;
+        for (let i = 0; i < numNodes; i++) {
+          const fromNode = currentRow.querySelector(`.node[data-i="${i}"]`);
+          if (!fromNode) continue;
+
+          const rectFrom = fromNode.getBoundingClientRect();
+          const drawLine = (startX, startY, endX, endY) => {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', startX); line.setAttribute('y1', startY);
+            line.setAttribute('x2', endX); line.setAttribute('y2', endY);
+            line.setAttribute('stroke', '#a0aec0'); line.setAttribute('stroke-width', '2');
+            line.setAttribute('marker-end', `url(#arrow-${tabId})`);
+            svg.appendChild(line);
+          };
+
+          if (nextRow) {
+            const upNode = nextRow.querySelector(`.node[data-i="${i + 1}"]`);
+            if (upNode) {
+              const rectTo = upNode.getBoundingClientRect();
+              const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
+              const startY = rectFrom.top - containerRect.top + container.scrollTop;
+              const endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft;
+              const endY = rectTo.bottom - containerRect.top + container.scrollTop;
+              drawLine(startX, startY, endX, endY + 2);
+            }
+          }
+
+          const drawHorizontal = (toNode, direction) => {
+            if (!toNode) return;
+            const rectTo = toNode.getBoundingClientRect();
+            let startX, startY, endX, endY;
+            if (direction === 'left') {
+              startX = rectFrom.left - containerRect.left + container.scrollLeft;
+              startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
+              endX = rectTo.right - containerRect.left + container.scrollLeft;
+              endY = rectTo.top + rectTo.height / 2 - containerRect.top + container.scrollTop;
+              drawLine(startX, startY, endX + 8, endY);
+            } else {
+              startX = rectFrom.right - containerRect.left + container.scrollLeft;
+              startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
+              endX = rectTo.left - containerRect.left + container.scrollLeft;
+              endY = rectTo.top + rectTo.height / 2 - containerRect.top + container.scrollTop;
+              drawLine(startX, startY, endX - 8, endY);
+            }
+          };
+
+          if (i === r) {
+            drawHorizontal(currentRow.querySelector(`.node[data-i="${i - 1}"]`), 'left');
+            drawHorizontal(currentRow.querySelector(`.node[data-i="${i + 1}"]`), 'right');
+          } else if (i < r) {
+            drawHorizontal(currentRow.querySelector(`.node[data-i="${i - 1}"]`), 'left');
+          } else if (i > r) {
+            drawHorizontal(currentRow.querySelector(`.node[data-i="${i + 1}"]`), 'right');
+          }
+        }
+      }
+
+      // 處理最後一列連線到參照列 (Reference Row)
+      const refRow = container.querySelector('.ref-row');
+      if (refRow && rows.length > 0) {
+        const lastRow = rows[rows.length - 1];
+        const r = parseInt(lastRow.dataset.r);
+        const numNodes = 2 * r + 1;
+        const refNodes = Array.from(refRow.querySelectorAll('.node'));
+        const refR = (refNodes.length - 1) / 2;
+
+        for (let i = 0; i < numNodes; i++) {
+          const fromNode = lastRow.querySelector(`.node[data-i="${i}"]`);
+          if (!fromNode) continue;
+
+          const rectFrom = fromNode.getBoundingClientRect();
+          const drawLine = (startX, startY, endX, endY) => {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', startX); line.setAttribute('y1', startY);
+            line.setAttribute('x2', endX); line.setAttribute('y2', endY);
+            line.setAttribute('stroke', '#a0aec0'); line.setAttribute('stroke-width', '2');
+            line.setAttribute('marker-end', `url(#arrow-${tabId})`);
+            svg.appendChild(line);
+          };
+
+          const offset = i - r; // 與中軸的距離 (- for left, + for right)
+
+          // 找尋對應的 target 節點 (正上方)
+          const targetI_up = refR + offset;
+          if (targetI_up >= 0 && targetI_up < refNodes.length) {
+            const upNode = refNodes[targetI_up];
+            if (upNode) {
+              const rectTo = upNode.getBoundingClientRect();
+              const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
+              const startY = rectFrom.top - containerRect.top + container.scrollTop;
+              const endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft;
+              const endY = rectTo.bottom - containerRect.top + container.scrollTop;
+              drawLine(startX, startY, endX, endY + 4);
+            }
+          }
+
+          // 找尋對應的 target 節點 (左前方/右前方)
+          if (offset !== 0) { // 非中軸
+            // 對於左側節點，右前方代表距離中軸近 1 格 (+1)
+            // 對於右側節點，左前方代表距離中軸近 1 格 (-1)
+            const diagOffset = offset > 0 ? offset - 1 : offset + 1;
+            const targetI_diag = refR + diagOffset;
+
+            if (targetI_diag >= 0 && targetI_diag < refNodes.length) {
+              const diagNode = refNodes[targetI_diag];
+              if (diagNode) {
+                const rectTo = diagNode.getBoundingClientRect();
+                const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
+                const startY = rectFrom.top - containerRect.top + container.scrollTop;
+                let endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft;
+                const endY = rectTo.bottom - containerRect.top + container.scrollTop;
+
+                // 為了避免與正下方上來的箭頭重疊，微調斜向箭頭的尾端位置
+                if (offset < 0) {
+                  // 左側節點往右上方連：箭頭尾端略往左移
+                  endX -= 12;
+                } else if (offset > 0) {
+                  // 右側節點往左上方連：箭頭尾端略往右移
+                  endX += 12;
+                }
+
+                drawLine(startX, startY, endX, endY + 4);
+              }
+            }
+          } else {
+            // 針對中軸節點 (offset == 0) 連接到正上方，已經由上面 targetI_up 處理過了
+          }
+        }
+      }
+    }
+
+    window.addEventListener('resize', () => {
+      const activeTab = document.querySelector('.tab-content.active');
+      if (activeTab) {
+        drawArrows(activeTab.id);
+        drawExperimentalNodes(activeTab.id);
+      }
+    });
+
+    // ================= 輸出與本地備份 =================
+    window.exportToImage = function () {
+      const activeTab = document.querySelector('.tab-content.active .tree-container');
+      if (!activeTab) return;
+      const pickers = activeTab.querySelectorAll('.color-picker');
+      pickers.forEach(p => p.style.display = 'none');
+
+      html2canvas(activeTab, { backgroundColor: "#ffffff", scale: 2 }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `矩陣紀錄_${new Date().getTime()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        pickers.forEach(p => p.style.display = '');
+      });
+    };
+
+    window.saveData = function () {
+      const data = getAppState();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `專題紀錄_${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+    };
+
+    window.loadData = function (event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          applyDataToUI(data);
+          scheduleSyncToCloud(); // 匯入成功後，強制推播給其他組員
+          alert("進度匯入成功！已同步至雲端。");
+        } catch (err) { alert("檔案格式錯誤或損毀。"); }
+      };
+      reader.readAsText(file);
+      event.target.value = "";
+    };
+
+    // ================= 初始化連線監聽 =================
+    setSyncStatus('syncing');
+
+    onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists() && docSnap.data().state) {
+        // 如果雲端有資料，就用雲端的資料繪製畫面
+        applyDataToUI(docSnap.data().state);
+        setSyncStatus('online');
+      } else {
+        // 第一個開啟這個專案的人：建立空白的第一頁，並推播給雲端
+        if (tabsList.length === 0) {
+          window.createTab();
+        }
+      }
+    }, (error) => {
+      console.error("Firestore 監聽失敗 (請確認 Rules 是否為允許讀寫):", error);
+      setSyncStatus('error');
+      if (tabsList.length === 0) window.createTab(null, false); // 離線狀態下至少能本機運作
+    });
+
+  </script>
+</body>
+
+</html>
