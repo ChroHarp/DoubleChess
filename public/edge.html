@@ -396,25 +396,28 @@
 
             const rows = Array.from(container.querySelectorAll('.tree-row'));
 
-            // 從底層 (DOM裡的第1個，即Lv_0) 開始往上遍歷
-            for (let rIndex = 0; rIndex < rows.length; rIndex++) {
+            // 改由最頂層 (DOM裡的最後1個，即索引最大的Lv) 開始往下遍歷，因為箭頭方向是由上往下
+            for (let rIndex = rows.length - 1; rIndex >= 0; rIndex--) {
                 const currentRow = rows[rIndex];
-                const nextRow = rIndex + 1 < rows.length ? rows[rIndex + 1] : null; // 上方的那一列
+                const prevRow = rIndex - 1 >= 0 ? rows[rIndex - 1] : null; // 下方的那一列
 
                 const currentNodes = Array.from(currentRow.querySelectorAll('.node'));
                 if (currentNodes.length === 0) continue;
 
-                const currentCenterI = (currentNodes.length - 1) / 2; // 當前列的中軸索引 (相對的)
+                const currentCenterI = (currentNodes.length - 1) / 2; // 當前列的中軸索引
 
                 currentNodes.forEach((fromNode, domIndex) => {
                     const rectFrom = fromNode.getBoundingClientRect();
-                    const offsetFromCenter = domIndex - currentCenterI; // 判斷位於左側(-), 中軸(0), 或右側(+)
-
-                    // A. 處理橫向箭頭 (同列)
+                    const offsetFromCenter = domIndex - currentCenterI; // 左側(-), 中軸(0), 右側(+)
                     const offsetGap = isCompact ? 2 : 12;
 
-                    if (domIndex > 0) {
-                        // 向左畫
+                    // 1. 中軸節點 (offset == 0)：下、左、右
+                    // 2. 左側節點 (offset < 0)：下、左、右下
+                    // 3. 右側節點 (offset > 0)：下、右、左下
+
+                    // ================= A. 處理橫向箭頭 (同列) =================
+                    if (offsetFromCenter <= 0 && domIndex > 0) {
+                        // 中軸或左側：向左畫 (左)
                         const leftNode = currentNodes[domIndex - 1];
                         const rectTo = leftNode.getBoundingClientRect();
                         const startX = rectFrom.left - containerRect.left + container.scrollLeft;
@@ -423,8 +426,8 @@
                         const endY = rectTo.top + rectTo.height / 2 - containerRect.top + container.scrollTop;
                         drawLine(startX, startY, endX + offsetGap, endY);
                     }
-                    if (domIndex < currentNodes.length - 1) {
-                        // 向右畫
+                    if (offsetFromCenter >= 0 && domIndex < currentNodes.length - 1) {
+                        // 中軸或右側：向右畫 (右)
                         const rightNode = currentNodes[domIndex + 1];
                         const rectTo = rightNode.getBoundingClientRect();
                         const startX = rectFrom.right - containerRect.left + container.scrollLeft;
@@ -434,49 +437,48 @@
                         drawLine(startX, startY, endX - offsetGap, endY);
                     }
 
-                    // B. 處理向上的斜向箭頭與垂直箭頭 (跨列)
-                    if (nextRow) {
-                        const nextNodes = Array.from(nextRow.querySelectorAll('.node'));
-                        if (nextNodes.length === 0) return;
-                        const nextCenterI = (nextNodes.length - 1) / 2; // 上方的中軸索引
+                    // ================= B. 處理向下的垂直與斜向箭頭 (跨列) =================
+                    if (prevRow) {
+                        const prevNodes = Array.from(prevRow.querySelectorAll('.node'));
+                        if (prevNodes.length === 0) return;
+                        const prevCenterI = (prevNodes.length - 1) / 2; // 下方的中軸索引
 
-                        // 垂直向上連線 (Center-aligned mapping)
-                        // 原則上，偏移量為 0 就連偏移量為 0，偏移量 -1 就連偏移量 -1
-                        const targetUpDomIndex = nextCenterI + offsetFromCenter;
-                        if (targetUpDomIndex >= 0 && targetUpDomIndex < nextNodes.length) {
-                            const upNode = nextNodes[targetUpDomIndex];
-                            const rectTo = upNode.getBoundingClientRect();
+                        // 所有人都有「往下」的垂直連線 (下)
+                        const targetDownDomIndex = prevCenterI + offsetFromCenter;
+                        if (targetDownDomIndex >= 0 && targetDownDomIndex < prevNodes.length) {
+                            const downNode = prevNodes[targetDownDomIndex];
+                            const rectTo = downNode.getBoundingClientRect();
                             const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
-                            const startY = rectFrom.top - containerRect.top + container.scrollTop;
+                            const startY = rectFrom.bottom - containerRect.top + container.scrollTop;
                             const endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft;
-                            const endY = rectTo.bottom - containerRect.top + container.scrollTop;
-                            drawLine(startX, startY, endX, endY + 4);
+                            const endY = rectTo.top - containerRect.top + container.scrollTop;
+                            drawLine(startX, startY, endX, endY - 4);
                         }
 
-                        // 處理斜向交叉連線
+                        // 斜向連線
                         if (offsetFromCenter < 0) {
-                            // 左側節點：可以連到右上(+1)
-                            const targetDiagDomIndex = targetUpDomIndex + 1;
-                            if (targetDiagDomIndex >= 0 && targetDiagDomIndex < nextNodes.length) {
-                                const diagNode = nextNodes[targetDiagDomIndex];
+                            // 左側節點：往「右下」連線
+                            const targetDiagDomIndex = targetDownDomIndex + 1;
+                            if (targetDiagDomIndex >= 0 && targetDiagDomIndex < prevNodes.length) {
+                                const diagNode = prevNodes[targetDiagDomIndex];
                                 const rectTo = diagNode.getBoundingClientRect();
                                 const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
-                                const startY = rectFrom.top - containerRect.top + container.scrollTop;
+                                const startY = rectFrom.bottom - containerRect.top + container.scrollTop;
                                 const endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft - (isCompact ? 8 : 12);
-                                const endY = rectTo.bottom - containerRect.top + container.scrollTop;
-                                drawLine(startX, startY, endX, endY + 4);
+                                const endY = rectTo.top - containerRect.top + container.scrollTop;
+                                drawLine(startX, startY, endX, endY - 4);
                             }
                         } else if (offsetFromCenter > 0) {
-                            // 右側節點：可以連到左上(-1)
-                            const targetDiagDomIndex = targetUpDomIndex - 1;
-                            if (targetDiagDomIndex >= 0 && targetDiagDomIndex < nextNodes.length) {
-                                const diagNode = nextNodes[targetDiagDomIndex];
+                            // 右側節點：往「左下」連線
+                            const targetDiagDomIndex = targetDownDomIndex - 1;
+                            if (targetDiagDomIndex >= 0 && targetDiagDomIndex < prevNodes.length) {
+                                const diagNode = prevNodes[targetDiagDomIndex];
                                 const rectTo = diagNode.getBoundingClientRect();
                                 const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
-                                const startY = rectFrom.top - containerRect.top + container.scrollTop;
+                                const startY = rectFrom.bottom - containerRect.top + container.scrollTop;
                                 const endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft + (isCompact ? 8 : 12);
-                                const endY = rectTo.bottom - containerRect.top + container.scrollTop;
-                                drawLine(startX, startY, endX, endY + 4);
+                                const endY = rectTo.top - containerRect.top + container.scrollTop;
+                                drawLine(startX, startY, endX, endY - 4);
                             }
                         }
                     }
