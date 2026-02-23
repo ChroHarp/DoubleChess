@@ -175,12 +175,38 @@
       display: block;
     }
 
+    /* 鎖定相關 UI 樣式 */
+    .locked-banner {
+      background: #fed7d7;
+      color: #c53030;
+      padding: 10px;
+      text-align: center;
+      font-weight: bold;
+      border-radius: 6px;
+      margin-bottom: 15px;
+      border: 1px solid #fc8181;
+      font-size: 15px;
+    }
+
+    .tab-content.locked .node {
+      border-color: #cbd5e0 !important;
+      background: #f7fafc !important;
+      pointer-events: none;
+      /* 防止 hover 喚出 O / X 按鈕 */
+    }
+
+    .tab-content.locked input,
+    .tab-content.locked button {
+      cursor: not-allowed !important;
+      opacity: 0.6;
+    }
+
     /* 樹狀圖結構 */
     .tree-container {
       display: flex;
       flex-direction: column-reverse;
       align-items: center;
-      gap: 40px;
+      gap: 80px;
       margin-top: 20px;
       padding: 40px;
       position: relative;
@@ -190,7 +216,7 @@
     .tree-row {
       display: flex;
       justify-content: center;
-      gap: 30px;
+      gap: 45px;
       position: relative;
       z-index: 2;
     }
@@ -203,17 +229,50 @@
       border-bottom: none;
     }
 
+    body.compact-mode .tree-container {
+      gap: 10px !important;
+      padding-top: 10px !important;
+    }
+
+    body.compact-mode .tree-row {
+      gap: 10px !important;
+    }
+
+    body.compact-mode .ref-row {
+      display: none !important;
+    }
+
+    .compact-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: bold;
+      color: #2d3748;
+      cursor: pointer;
+      padding: 6px 12px;
+      background: #edf2f7;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      margin-left: auto;
+    }
+
     .ref-label {
       position: absolute;
-      top: -30px;
+      bottom: calc(100% + 5px);
       left: 50%;
       transform: translateX(-50%);
       color: #718096;
       font-weight: bold;
       font-size: 14px;
       background: white;
-      padding: 0 10px;
+      padding: 5px 10px;
+      border-radius: 6px;
       white-space: nowrap;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 15px;
+      z-index: 10;
     }
 
     .ref-node {
@@ -253,6 +312,11 @@
       box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
       position: relative;
       transition: border-color 0.2s, background-color 0.2s;
+    }
+
+    /* 控制參照層顯示/隱藏 */
+    .hide-ref-layer .exp-node {
+      display: none !important;
     }
 
     .node.green {
@@ -335,7 +399,7 @@
   </style>
 </head>
 
-<body>
+<body class="hide-ref-layer">
 
   <div class="header-controls">
     <button class="btn" onclick="window.createTab()">+ 新增 Lv 分頁</button>
@@ -350,6 +414,10 @@
       <span id="status-text">連線中...</span>
     </div>
 
+    <label class="compact-toggle">
+      <input type="checkbox" id="compactModeToggle" onchange="window.toggleCompactMode(event)"> 緊密模式
+    </label>
+
     <button class="btn export" onclick="window.exportToImage()">🖼️ 匯出當前畫面</button>
     <button class="btn save" onclick="window.saveData()">💾 備份 (JSON)</button>
     <button class="btn load" onclick="document.getElementById('fileInput').click()">📂 匯入覆蓋</button>
@@ -361,7 +429,7 @@
   <!-- 使用 module 引入 Firebase v10 SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+    import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, setDoc, updateDoc, deleteField, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
     // 1. Firebase 初始化
     const firebaseConfig = {
@@ -374,7 +442,9 @@
     };
 
     const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    const db = initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    });
     const docRef = doc(db, 'research_data', 'board_state');
 
     // 2. 狀態變數
@@ -382,6 +452,11 @@
     let currentIndex = 0;
     let isSyncingFromCloud = false; // 避免雲端更新時觸發二次上傳
     let syncTimeout = null;
+    let lastSyncState = null; // 儲存最後一次與雲端同步的完整狀態，用以計算 Delta (差異)
+    let hasPendingChanges = false; // 防呆：是否有正在等待送出 0.6 秒防抖的變更
+    const clientId = Math.random().toString(36).substring(2, 15); // 隨機產生這台裝置的 Session ID
+    let currentLocks = {}; // 紀錄從雲端抓下來的所有鎖定狀態
+    let lockThrottlers = {}; // 用於節流本機往雲端送出鎖定要求的頻率
 
     // 3. UI 燈號控制
     function setSyncStatus(status) {
@@ -397,13 +472,83 @@
       }
     }
 
-    // 4. 抓取當前所有 DOM 資料轉為 JSON Object
-    function getAppState() {
-      const data = [];
+    // 3.5 編輯鎖獲取與延長 (Level-based Lock)
+    window.acquireOrExtendLock = function (tabId) {
+      const now = Date.now();
+      const existingLock = currentLocks[tabId];
+
+      // 如果這個分頁被別人鎖住了，且鎖還沒過期，則拒絕操作
+      if (existingLock && existingLock.clientId !== clientId && existingLock.expiresAt > now) {
+        return false;
+      }
+
+      // 如果可以取得鎖，先樂觀更新本地端狀態，讓 UI 立刻響應
+      currentLocks[tabId] = { clientId, expiresAt: now + 10000 };
+      updateLockUI(); // 更新自己的 UI
+
+      // 節流：如果距離上一次送出同一個分頁的鎖不到 2 秒，就不重複發送 API，避免塞爆 Firestore
+      if (!lockThrottlers[tabId] || now - lockThrottlers[tabId] > 2000) {
+        lockThrottlers[tabId] = now;
+        // 把取得鎖的操作推上雲端 (不影響資料本身，所以直接用 updateDoc)
+        if (lastSyncState) {
+          updateDoc(docRef, { [`locks.${tabId}`]: { clientId, expiresAt: now + 10000 } }).catch(e => console.warn("Acquire lock update failed", e));
+        }
+      }
+      return true;
+    };
+
+    // 3.6 更新鎖定 UI (反灰、唯讀)
+    function updateLockUI() {
+      const now = Date.now();
       document.querySelectorAll('.tab-content').forEach(tab => {
-        const tabData = { id: tab.id, rows: [] };
+        const tabId = tab.id;
+        const lock = currentLocks[tabId];
+        let isLockedByOther = false;
+
+        if (lock && lock.clientId !== clientId && lock.expiresAt > now) {
+          isLockedByOther = true;
+        }
+
+        let banner = tab.querySelector('.locked-banner');
+        if (isLockedByOther) {
+          if (!banner) {
+            banner = document.createElement('div');
+            banner.className = 'locked-banner';
+            banner.innerHTML = '🔒 其他使用者正在編輯此分頁結構，目前為唯讀保護狀態';
+            tab.insertBefore(banner, tab.firstChild);
+          }
+          tab.classList.add('locked');
+          tab.querySelectorAll('input, button').forEach(el => {
+            if (!el.dataset.originalDisabled) {
+              el.dataset.originalDisabled = el.disabled.toString();
+            }
+            if (el.type !== 'checkbox') el.disabled = true;
+          });
+        } else {
+          if (banner) banner.remove();
+          tab.classList.remove('locked');
+          tab.querySelectorAll('input, button').forEach(el => {
+            if (el.type !== 'checkbox' && document.activeElement !== el) {
+              el.disabled = false;
+              if (el.dataset.originalDisabled === "true") el.disabled = true;
+            }
+          });
+        }
+      });
+    }
+
+    // 每 2 秒檢查一次有沒有過期的鎖，自動解除
+    setInterval(() => {
+      updateLockUI();
+    }, 2000);
+
+    // 4. 抓取當前所有 DOM 資料轉為 JSON Object (改為 Map 物件以支援 Firebase Delta 更新)
+    function getAppState() {
+      const data = {};
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        const tabData = { id: tab.id, rows: {} };
         tab.querySelectorAll('.tree-row:not(.ref-row)').forEach(row => {
-          const rowData = { r: row.dataset.r, nodes: [] };
+          const rowData = { r: row.dataset.r, nodes: {} };
           row.querySelectorAll('.node').forEach(node => {
             const nodeInfo = {
               i: node.dataset.i,
@@ -413,64 +558,150 @@
             node.querySelectorAll('input').forEach(input => {
               nodeInfo.vals[input.dataset.pos] = input.value;
             });
-            rowData.nodes.push(nodeInfo);
+            rowData.nodes[nodeInfo.i] = nodeInfo;
           });
-          tabData.rows.push(rowData);
+          tabData.rows[rowData.r] = rowData;
         });
-        data.push(tabData);
+        data[tab.id] = tabData;
       });
       return data;
     }
 
-    // 5. 將資料推播至 Firebase 雲端 (Debounce 防抖)
+    // 輔助：計算兩個 JSON 的深度差異 (Delta)，轉為 Firebase dot-notation
+    function calculateDiff(oldObj, newObj, prefix = 'state') {
+      const diff = {};
+      if (oldObj === null || oldObj === undefined) return null;
+
+      function compare(oldVal, newVal, currentPrefix) {
+        if (oldVal === newVal) return;
+
+        if (newVal === null || newVal === undefined || typeof newVal !== 'object') {
+          diff[currentPrefix] = newVal;
+          return;
+        }
+
+        if (oldVal === null || typeof oldVal !== 'object') {
+          diff[currentPrefix] = newVal;
+          return;
+        }
+
+        const keys = new Set([...Object.keys(oldVal), ...Object.keys(newVal)]);
+        for (const key of keys) {
+          if (!(key in oldVal)) {
+            diff[`${currentPrefix}.${key}`] = newVal[key];
+          } else if (!(key in newVal)) {
+            diff[`${currentPrefix}.${key}`] = deleteField();
+          } else {
+            compare(oldVal[key], newVal[key], `${currentPrefix}.${key}`);
+          }
+        }
+      }
+
+      compare(oldObj, newObj, prefix);
+      return diff;
+    }
+
+    // 5. 將資料推播至 Firebase 雲端 (Debounce 防抖 + Delta 差異更新)
     function scheduleSyncToCloud() {
       if (isSyncingFromCloud) return; // 如果正在接收雲端資料，不反向推播
 
+      hasPendingChanges = true; // 鎖住，告訴系統目前本機有最新草稿
       setSyncStatus('syncing');
       clearTimeout(syncTimeout);
       syncTimeout = setTimeout(async () => {
         try {
           const currentState = getAppState();
-          await setDoc(docRef, { state: currentState, timestamp: new Date().toISOString() });
+
+          if (!lastSyncState) {
+            await setDoc(docRef, { state: currentState, timestamp: new Date().toISOString() });
+          } else {
+            const diff = calculateDiff(lastSyncState, currentState, 'state');
+
+            if (diff === null) {
+              await setDoc(docRef, { state: currentState, timestamp: new Date().toISOString() });
+            } else if (Object.keys(diff).length > 0) {
+              diff['timestamp'] = new Date().toISOString();
+              await updateDoc(docRef, diff);
+            }
+          }
+
+          // 預防性更新最後狀態
+          lastSyncState = currentState;
           setSyncStatus('online');
         } catch (error) {
           console.error("Firebase 儲存失敗:", error);
           setSyncStatus('error');
+        } finally {
+          hasPendingChanges = false; // 送出完畢，結算解鎖
         }
       }, 600); // 停止打字/操作 0.6 秒後自動儲存
     }
 
     // 6. 接收 Firebase 雲端資料並更新 UI (防游標跳動)
     function applyDataToUI(data) {
+      if (!data) return;
+      lastSyncState = JSON.parse(JSON.stringify(data)); // 紀錄雲端最新的完整狀態，供後續比對
       isSyncingFromCloud = true; // 鎖住，避免觸發 scheduleSyncToCloud
 
+      // 將 Map 轉成有排序的 Array 以保證順序
+      // 容錯機制：如果 data 是舊版 Array (或者舊備份檔)，直接使用，否則轉 Object.values 排序
+      let dataArray = [];
+      if (Array.isArray(data)) {
+        dataArray = data;
+      } else {
+        dataArray = Object.values(data).sort((a, b) => {
+          const numA = parseInt(a.id.split('_')[1] || '0');
+          const numB = parseInt(b.id.split('_')[1] || '0');
+          return numA - numB;
+        });
+      }
+
       // a. 建立缺少的 Tab
-      data.forEach(tabData => {
+      dataArray.forEach(tabData => {
         if (!tabsList.includes(tabData.id)) window.createTab(tabData.id, false);
       });
 
       // b. 更新每一列與節點
-      data.forEach(tabData => {
+      dataArray.forEach(tabData => {
         const container = document.getElementById(`tree-${tabData.id}`);
         if (!container) return;
 
+        // 容錯：讓 rows 也支援 Map 或 Array
+        let rowsArray = [];
+        if (tabData.rows) {
+          if (Array.isArray(tabData.rows)) {
+            rowsArray = tabData.rows;
+          } else {
+            rowsArray = Object.values(tabData.rows).sort((a, b) => parseInt(a.r) - parseInt(b.r));
+          }
+        }
+
         // 補足列數
         let currentRows = container.querySelectorAll('.tree-row:not(.ref-row)');
-        while (currentRows.length < tabData.rows.length) {
+        while (currentRows.length < rowsArray.length) {
           window.addRow(tabData.id, null, false);
           currentRows = container.querySelectorAll('.tree-row:not(.ref-row)');
         }
         // 刪除多餘的列數
-        while (currentRows.length > tabData.rows.length) {
+        while (currentRows.length > rowsArray.length) {
           container.removeChild(currentRows[currentRows.length - 1]);
           currentRows = container.querySelectorAll('.tree-row:not(.ref-row)');
         }
 
         // c. 更新內容 (避開目前 focus 的輸入框)
-        tabData.rows.forEach(rowData => {
+        rowsArray.forEach(rowData => {
+          let nodesArray = [];
+          if (rowData.nodes) {
+            if (Array.isArray(rowData.nodes)) {
+              nodesArray = rowData.nodes;
+            } else {
+              nodesArray = Object.values(rowData.nodes);
+            }
+          }
+
           const rowDiv = container.querySelector(`.tree-row:not(.ref-row)[data-r="${rowData.r}"]`);
           if (rowDiv) {
-            rowData.nodes.forEach(nodeData => {
+            nodesArray.forEach(nodeData => {
               const node = rowDiv.querySelector(`.node[data-i="${nodeData.i}"]`);
               if (node) {
                 if (!node.classList.contains(nodeData.color)) {
@@ -493,6 +724,7 @@
 
         updateReferenceRow(tabData.id);
         drawArrows(tabData.id);
+        drawExperimentalNodes(tabData.id);
       });
 
       if (tabsList.length > 0 && document.querySelectorAll('.tab-content.active').length === 0) {
@@ -519,11 +751,18 @@
       const addRowBtn = document.createElement('button');
       addRowBtn.className = 'btn'; addRowBtn.style.marginRight = '10px';
       addRowBtn.innerText = '⬆️ 往上新增一列 Node (+2)';
-      addRowBtn.onclick = () => { window.addRow(tabId); drawArrows(tabId); };
+      addRowBtn.onclick = () => {
+        if (!window.acquireOrExtendLock(tabId)) return;
+        window.addRow(tabId);
+        drawArrows(tabId);
+      };
 
       const undoRowBtn = document.createElement('button');
       undoRowBtn.className = 'btn undo'; undoRowBtn.innerText = '⬇️ 刪除最上列 (還原)';
-      undoRowBtn.onclick = () => window.removeRow(tabId);
+      undoRowBtn.onclick = () => {
+        if (!window.acquireOrExtendLock(tabId)) return;
+        window.removeRow(tabId);
+      };
 
       controlsDiv.appendChild(addRowBtn); controlsDiv.appendChild(undoRowBtn);
 
@@ -561,7 +800,10 @@
       document.getElementById('next-btn').disabled = (currentIndex === tabsList.length - 1);
 
       updateReferenceRow(tabId);
-      setTimeout(() => drawArrows(tabId), 50);
+      setTimeout(() => {
+        drawArrows(tabId);
+        drawExperimentalNodes(tabId);
+      }, 50);
     };
 
     window.prevTab = function () { window.switchTab(currentIndex - 1); };
@@ -592,7 +834,34 @@
       refRow.className = 'tree-row ref-row';
 
       const label = document.createElement('div');
-      label.className = 'ref-label'; label.innerText = `[ 參照自 Lv ${sourceN} 的最後一列 ]`;
+      label.className = 'ref-label';
+      label.innerHTML = `<span>[ 參照自 Lv ${sourceN} 的最後一列 ]</span>`;
+
+      if (n >= 4) {
+        const toggleLabel = document.createElement('label');
+        toggleLabel.style.display = 'flex';
+        toggleLabel.style.alignItems = 'center';
+        toggleLabel.style.gap = '5px';
+        toggleLabel.style.cursor = 'pointer';
+        toggleLabel.style.fontSize = '18px';
+        toggleLabel.style.fontWeight = 'bold';
+        toggleLabel.style.color = '#4a5568';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.style.width = '20px';
+        checkbox.style.height = '20px';
+        checkbox.checked = !document.body.classList.contains('hide-ref-layer');
+        checkbox.addEventListener('change', function () {
+          if (this.checked) document.body.classList.remove('hide-ref-layer');
+          else document.body.classList.add('hide-ref-layer');
+        });
+
+        toggleLabel.appendChild(checkbox);
+        toggleLabel.appendChild(document.createTextNode(`顯示 Lv ${n - 1}`));
+        label.appendChild(toggleLabel);
+      }
+
       refRow.appendChild(label);
 
       const nodes = lastSourceRow.querySelectorAll('.node');
@@ -616,6 +885,96 @@
       container.appendChild(refRow);
     }
 
+    function drawExperimentalNodes(tabId) {
+      const nMatch = tabId.match(/Lv_(\d+)/);
+      if (!nMatch) return;
+      const n = parseInt(nMatch[1]);
+      if (n < 4) return; // 從 Lv 4 開始
+
+      const container = document.getElementById(`tree-${tabId}`);
+      if (!container) return;
+
+      // 清除舊的疊加節點
+      container.querySelectorAll('.exp-node').forEach(n => n.remove());
+
+      const sourceTabId = `Lv_${n - 1}`;
+      const sourceContainer = document.getElementById(`tree-${sourceTabId}`);
+      if (!sourceContainer) return; // 如果上一層還沒建立則跳過
+
+      const sourceRows = Array.from(sourceContainer.querySelectorAll('.tree-row:not(.ref-row)'));
+      if (sourceRows.length === 0) return;
+
+      const containerRect = container.getBoundingClientRect();
+
+      // 決定要提取的參照層列 (r)
+      let rowsToExtract = [];
+      if (n % 2 !== 0) {
+        // n為奇數時，參照層(偶數層)只顯示除了第一列(r=0)和最後一列以外的節點
+        rowsToExtract = sourceRows.filter((row, idx) => idx !== 0 && idx !== sourceRows.length - 1);
+      } else {
+        // n為偶數時，參照層(奇數層)只顯示除了第一列(r=0)以外的節點
+        rowsToExtract = sourceRows.filter((row, idx) => idx !== 0);
+      }
+
+      rowsToExtract.forEach(sourceRow => {
+        const r_prev = parseInt(sourceRow.dataset.r);
+        const sourceNodes = sourceRow.querySelectorAll('.node');
+
+        sourceNodes.forEach(sourceNode => {
+          const i_prev = parseInt(sourceNode.dataset.i);
+
+          // 規則 1: lv(n-1)的節點與lv(n)的節點由第一列開始對齊
+          // 所以座標直接對應到該層的相同 r 與 i
+          const node1 = container.querySelector(`.tree-row[data-r="${r_prev}"] .node[data-i="${i_prev}"]`);
+
+          if (node1) {
+            const rect1 = node1.getBoundingClientRect();
+
+            // 取得 Lv(n) 該節點的中心點
+            const baseX = (rect1.left + rect1.right) / 2 - containerRect.left + container.scrollLeft;
+            const baseY = (rect1.top + rect1.bottom) / 2 - containerRect.top + container.scrollTop;
+
+            // X 軸水平偏移取消 (0px)
+            const xOffset = 0;
+            // Y 軸垂直偏移到間隙中央：(節點高度 + 垂直gap 80px) / 2
+            const yOffset = (rect1.height + 80) / 2;
+
+            const centerX = baseX + xOffset;
+            const centerY = baseY - yOffset; // Y 座標往上是減
+
+            // 建立疊加節點 (Ghost Node)
+            const expNode = document.createElement('div');
+            const colorClass = sourceNode.classList.contains('green') ? 'green' : sourceNode.classList.contains('red') ? 'red' : 'white';
+            expNode.className = `node exp-node ${colorClass}`;
+
+            // 設定樣式與位移
+            expNode.style.position = 'absolute';
+            expNode.style.left = `${centerX}px`;
+            expNode.style.top = `${centerY}px`;
+            expNode.style.transform = `translate(-50%, -50%) scale(0.85)`;
+            expNode.style.zIndex = '1'; // 確保在背景但高於線條
+            expNode.style.opacity = '0.5'; // 半透明圖層
+            expNode.style.pointerEvents = 'none'; // 無法點擊
+
+            ['a', 'b', 'c', 'd'].forEach(pos => {
+              const sourceInput = sourceNode.querySelector(`input[data-pos="${pos}"]`);
+              const input = document.createElement('input');
+              input.type = 'text'; input.dataset.pos = pos;
+              input.value = sourceInput ? sourceInput.value : '';
+              input.readOnly = true;
+              input.style.width = sourceInput ? sourceInput.style.width : '3ch';
+              input.style.pointerEvents = 'none';
+              input.style.background = 'transparent';
+              input.style.borderColor = 'transparent';
+              expNode.appendChild(input);
+            });
+
+            container.appendChild(expNode);
+          }
+        });
+      });
+    }
+
     window.addRow = function (tabId, r = null, triggerSync = true) {
       const container = document.getElementById(`tree-${tabId}`);
       const rowsCount = container.querySelectorAll('.tree-row:not(.ref-row)').length;
@@ -633,6 +992,7 @@
       if (refRow) container.insertBefore(rowDiv, refRow);
       else container.appendChild(rowDiv);
 
+      drawExperimentalNodes(tabId); // 重繪疊加層
       if (triggerSync) scheduleSyncToCloud();
       return rowDiv;
     };
@@ -647,6 +1007,7 @@
       }
       container.removeChild(rows[rows.length - 1]);
       drawArrows(tabId);
+      drawExperimentalNodes(tabId); // 重繪疊加層
       scheduleSyncToCloud();
     };
 
@@ -657,8 +1018,8 @@
       const picker = document.createElement('div');
       picker.className = 'color-picker';
       picker.innerHTML = `
-        <button class="btn-color btn-green" onclick="window.setNodeColor(event, this, 'green')">O</button>
-        <button class="btn-color btn-red" onclick="window.setNodeColor(event, this, 'red')">X</button>
+        <button class="btn-color btn-green" onclick="window.setNodeColor(event, this, 'green', '${tabId}')">O</button>
+        <button class="btn-color btn-red" onclick="window.setNodeColor(event, this, 'red', '${tabId}')">X</button>
     `;
       node.appendChild(picker);
 
@@ -666,7 +1027,14 @@
         const input = document.createElement('input');
         input.type = 'text'; input.dataset.pos = pos;
 
+        input.onfocus = () => {
+          if (!window.acquireOrExtendLock(tabId)) {
+            input.blur();
+          }
+        };
+
         input.oninput = () => {
+          if (!window.acquireOrExtendLock(tabId)) return;
           input.style.width = Math.max(3, input.value.length + 1) + 'ch';
           syncSymmetricNode(input, r, i);
           setTimeout(() => drawArrows(tabId), 50);
@@ -679,8 +1047,9 @@
       return node;
     }
 
-    window.setNodeColor = function (event, btnElement, colorClass) {
+    window.setNodeColor = function (event, btnElement, colorClass, tabId) {
       event.stopPropagation();
+      if (!window.acquireOrExtendLock(tabId)) return;
       const node = btnElement.closest('.node');
       if (node.classList.contains(colorClass)) node.className = 'node white';
       else node.className = `node ${colorClass}`;
@@ -785,18 +1154,19 @@
             if (!toNode) return;
             const rectTo = toNode.getBoundingClientRect();
             let startX, startY, endX, endY;
+            const offsetGap = document.body.classList.contains('compact-mode') ? 2 : 8;
             if (direction === 'left') {
               startX = rectFrom.left - containerRect.left + container.scrollLeft;
               startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
               endX = rectTo.right - containerRect.left + container.scrollLeft;
               endY = rectTo.top + rectTo.height / 2 - containerRect.top + container.scrollTop;
-              drawLine(startX, startY, endX + 8, endY);
+              drawLine(startX, startY, endX + offsetGap, endY);
             } else {
               startX = rectFrom.right - containerRect.left + container.scrollLeft;
               startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
               endX = rectTo.left - containerRect.left + container.scrollLeft;
               endY = rectTo.top + rectTo.height / 2 - containerRect.top + container.scrollTop;
-              drawLine(startX, startY, endX - 8, endY);
+              drawLine(startX, startY, endX - offsetGap, endY);
             }
           };
 
@@ -812,8 +1182,9 @@
       }
 
       // 處理最後一列連線到參照列 (Reference Row)
+      const isCompact = document.body.classList.contains('compact-mode');
       const refRow = container.querySelector('.ref-row');
-      if (refRow && rows.length > 0) {
+      if (!isCompact && refRow && rows.length > 0) {
         const lastRow = rows[rows.length - 1];
         const r = parseInt(lastRow.dataset.r);
         const numNodes = 2 * r + 1;
@@ -887,19 +1258,42 @@
 
     window.addEventListener('resize', () => {
       const activeTab = document.querySelector('.tab-content.active');
-      if (activeTab) drawArrows(activeTab.id);
+      if (activeTab) {
+        drawArrows(activeTab.id);
+        if (typeof drawExperimentalNodes === 'function') drawExperimentalNodes(activeTab.id);
+      }
     });
+
+    window.toggleCompactMode = function (e) {
+      if (e.target.checked) {
+        document.body.classList.add('compact-mode');
+      } else {
+        document.body.classList.remove('compact-mode');
+      }
+      setTimeout(() => {
+        const activeTab = document.querySelector('.tab-content.active');
+        if (activeTab) {
+          drawArrows(activeTab.id);
+          if (typeof drawExperimentalNodes === 'function') drawExperimentalNodes(activeTab.id);
+        }
+      }, 50);
+    };
 
     // ================= 輸出與本地備份 =================
     window.exportToImage = function () {
-      const activeTab = document.querySelector('.tab-content.active .tree-container');
+      const activeTabElement = document.querySelector('.tab-content.active');
+      if (!activeTabElement) return;
+      const activeTab = activeTabElement.querySelector('.tree-container');
       if (!activeTab) return;
+
+      const tabId = activeTabElement.id; // e.g., 'Lv_0'
       const pickers = activeTab.querySelectorAll('.color-picker');
       pickers.forEach(p => p.style.display = 'none');
 
       html2canvas(activeTab, { backgroundColor: "#ffffff", scale: 2 }).then(canvas => {
         const link = document.createElement('a');
-        link.download = `矩陣紀錄_${new Date().getTime()}.png`;
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        link.download = `${tabId}_${dateStr}.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
         pickers.forEach(p => p.style.display = '');
@@ -935,9 +1329,24 @@
     setSyncStatus('syncing');
 
     onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists() && docSnap.data().state) {
-        // 如果雲端有資料，就用雲端的資料繪製畫面
-        applyDataToUI(docSnap.data().state);
+      if (docSnap.exists()) {
+        const dbData = docSnap.data();
+
+        // 更新鎖定狀態
+        if (dbData.locks) {
+          currentLocks = dbData.locks;
+          updateLockUI();
+        }
+
+        // 核心資料繪製
+        if (dbData.state) {
+          if (!hasPendingChanges) {
+            applyDataToUI(dbData.state);
+          } else {
+            // 背景同步 lastSyncState 以供 Delta 比對使用，但不覆寫 DOM
+            lastSyncState = JSON.parse(JSON.stringify(dbData.state));
+          }
+        }
         setSyncStatus('online');
       } else {
         // 第一個開啟這個專案的人：建立空白的第一頁，並推播給雲端

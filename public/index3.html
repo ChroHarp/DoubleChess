@@ -180,7 +180,7 @@
       display: flex;
       flex-direction: column-reverse;
       align-items: center;
-      gap: 80px;
+      gap: 40px;
       margin-top: 20px;
       padding: 40px;
       position: relative;
@@ -190,7 +190,7 @@
     .tree-row {
       display: flex;
       justify-content: center;
-      gap: 45px;
+      gap: 30px;
       position: relative;
       z-index: 2;
     }
@@ -205,21 +205,15 @@
 
     .ref-label {
       position: absolute;
-      bottom: calc(100% + 5px);
+      top: -30px;
       left: 50%;
       transform: translateX(-50%);
       color: #718096;
       font-weight: bold;
       font-size: 14px;
       background: white;
-      padding: 5px 10px;
-      border-radius: 6px;
+      padding: 0 10px;
       white-space: nowrap;
-      display: flex;
-      flex-direction: row;
-      align-items: center;
-      gap: 15px;
-      z-index: 10;
     }
 
     .ref-node {
@@ -259,11 +253,6 @@
       box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
       position: relative;
       transition: border-color 0.2s, background-color 0.2s;
-    }
-
-    /* 控制參照層顯示/隱藏 */
-    .hide-ref-layer .exp-node {
-      display: none !important;
     }
 
     .node.green {
@@ -346,7 +335,7 @@
   </style>
 </head>
 
-<body class="hide-ref-layer">
+<body>
 
   <div class="header-controls">
     <button class="btn" onclick="window.createTab()">+ 新增 Lv 分頁</button>
@@ -453,35 +442,65 @@
 
     // 6. 接收 Firebase 雲端資料並更新 UI (防游標跳動)
     function applyDataToUI(data) {
+      if (!data) return;
       isSyncingFromCloud = true; // 鎖住，避免觸發 scheduleSyncToCloud
 
+      let dataArray = [];
+      if (Array.isArray(data)) {
+        dataArray = data;
+      } else {
+        dataArray = Object.values(data).sort((a, b) => {
+          const numA = parseInt(a.id.split('_')[1] || '0');
+          const numB = parseInt(b.id.split('_')[1] || '0');
+          return numA - numB;
+        });
+      }
+
       // a. 建立缺少的 Tab
-      data.forEach(tabData => {
+      dataArray.forEach(tabData => {
         if (!tabsList.includes(tabData.id)) window.createTab(tabData.id, false);
       });
 
       // b. 更新每一列與節點
-      data.forEach(tabData => {
+      dataArray.forEach(tabData => {
         const container = document.getElementById(`tree-${tabData.id}`);
         if (!container) return;
 
+        let rowsArray = [];
+        if (tabData.rows) {
+          if (Array.isArray(tabData.rows)) {
+            rowsArray = tabData.rows;
+          } else {
+            rowsArray = Object.values(tabData.rows).sort((a, b) => parseInt(a.r) - parseInt(b.r));
+          }
+        }
+
         // 補足列數
         let currentRows = container.querySelectorAll('.tree-row:not(.ref-row)');
-        while (currentRows.length < tabData.rows.length) {
+        while (currentRows.length < rowsArray.length) {
           window.addRow(tabData.id, null, false);
           currentRows = container.querySelectorAll('.tree-row:not(.ref-row)');
         }
         // 刪除多餘的列數
-        while (currentRows.length > tabData.rows.length) {
+        while (currentRows.length > rowsArray.length) {
           container.removeChild(currentRows[currentRows.length - 1]);
           currentRows = container.querySelectorAll('.tree-row:not(.ref-row)');
         }
 
         // c. 更新內容 (避開目前 focus 的輸入框)
-        tabData.rows.forEach(rowData => {
+        rowsArray.forEach(rowData => {
+          let nodesArray = [];
+          if (rowData.nodes) {
+            if (Array.isArray(rowData.nodes)) {
+              nodesArray = rowData.nodes;
+            } else {
+              nodesArray = Object.values(rowData.nodes);
+            }
+          }
+
           const rowDiv = container.querySelector(`.tree-row:not(.ref-row)[data-r="${rowData.r}"]`);
           if (rowDiv) {
-            rowData.nodes.forEach(nodeData => {
+            nodesArray.forEach(nodeData => {
               const node = rowDiv.querySelector(`.node[data-i="${nodeData.i}"]`);
               if (node) {
                 if (!node.classList.contains(nodeData.color)) {
@@ -504,7 +523,6 @@
 
         updateReferenceRow(tabData.id);
         drawArrows(tabData.id);
-        drawExperimentalNodes(tabData.id);
       });
 
       if (tabsList.length > 0 && document.querySelectorAll('.tab-content.active').length === 0) {
@@ -573,10 +591,7 @@
       document.getElementById('next-btn').disabled = (currentIndex === tabsList.length - 1);
 
       updateReferenceRow(tabId);
-      setTimeout(() => {
-        drawArrows(tabId);
-        drawExperimentalNodes(tabId);
-      }, 50);
+      setTimeout(() => drawArrows(tabId), 50);
     };
 
     window.prevTab = function () { window.switchTab(currentIndex - 1); };
@@ -607,34 +622,7 @@
       refRow.className = 'tree-row ref-row';
 
       const label = document.createElement('div');
-      label.className = 'ref-label';
-      label.innerHTML = `<span>[ 參照自 Lv ${sourceN} 的最後一列 ]</span>`;
-
-      if (n >= 4) {
-        const toggleLabel = document.createElement('label');
-        toggleLabel.style.display = 'flex';
-        toggleLabel.style.alignItems = 'center';
-        toggleLabel.style.gap = '5px';
-        toggleLabel.style.cursor = 'pointer';
-        toggleLabel.style.fontSize = '18px';
-        toggleLabel.style.fontWeight = 'bold';
-        toggleLabel.style.color = '#4a5568';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.style.width = '20px';
-        checkbox.style.height = '20px';
-        checkbox.checked = !document.body.classList.contains('hide-ref-layer');
-        checkbox.addEventListener('change', function () {
-          if (this.checked) document.body.classList.remove('hide-ref-layer');
-          else document.body.classList.add('hide-ref-layer');
-        });
-
-        toggleLabel.appendChild(checkbox);
-        toggleLabel.appendChild(document.createTextNode(`顯示 Lv ${n - 1}`));
-        label.appendChild(toggleLabel);
-      }
-
+      label.className = 'ref-label'; label.innerText = `[ 參照自 Lv ${sourceN} 的最後一列 ]`;
       refRow.appendChild(label);
 
       const nodes = lastSourceRow.querySelectorAll('.node');
@@ -658,96 +646,6 @@
       container.appendChild(refRow);
     }
 
-    function drawExperimentalNodes(tabId) {
-      const nMatch = tabId.match(/Lv_(\d+)/);
-      if (!nMatch) return;
-      const n = parseInt(nMatch[1]);
-      if (n < 4) return; // 從 Lv 4 開始
-
-      const container = document.getElementById(`tree-${tabId}`);
-      if (!container) return;
-
-      // 清除舊的疊加節點
-      container.querySelectorAll('.exp-node').forEach(n => n.remove());
-
-      const sourceTabId = `Lv_${n - 1}`;
-      const sourceContainer = document.getElementById(`tree-${sourceTabId}`);
-      if (!sourceContainer) return; // 如果上一層還沒建立則跳過
-
-      const sourceRows = Array.from(sourceContainer.querySelectorAll('.tree-row:not(.ref-row)'));
-      if (sourceRows.length === 0) return;
-
-      const containerRect = container.getBoundingClientRect();
-
-      // 決定要提取的參照層列 (r)
-      let rowsToExtract = [];
-      if (n % 2 !== 0) {
-        // n為奇數時，參照層(偶數層)只顯示除了第一列(r=0)和最後一列以外的節點
-        rowsToExtract = sourceRows.filter((row, idx) => idx !== 0 && idx !== sourceRows.length - 1);
-      } else {
-        // n為偶數時，參照層(奇數層)只顯示除了第一列(r=0)以外的節點
-        rowsToExtract = sourceRows.filter((row, idx) => idx !== 0);
-      }
-
-      rowsToExtract.forEach(sourceRow => {
-        const r_prev = parseInt(sourceRow.dataset.r);
-        const sourceNodes = sourceRow.querySelectorAll('.node');
-
-        sourceNodes.forEach(sourceNode => {
-          const i_prev = parseInt(sourceNode.dataset.i);
-
-          // 規則 1: lv(n-1)的節點與lv(n)的節點由第一列開始對齊
-          // 所以座標直接對應到該層的相同 r 與 i
-          const node1 = container.querySelector(`.tree-row[data-r="${r_prev}"] .node[data-i="${i_prev}"]`);
-
-          if (node1) {
-            const rect1 = node1.getBoundingClientRect();
-
-            // 取得 Lv(n) 該節點的中心點
-            const baseX = (rect1.left + rect1.right) / 2 - containerRect.left + container.scrollLeft;
-            const baseY = (rect1.top + rect1.bottom) / 2 - containerRect.top + container.scrollTop;
-
-            // X 軸水平偏移取消 (0px)
-            const xOffset = 0;
-            // Y 軸垂直偏移到間隙中央：(節點高度 + 垂直gap 80px) / 2
-            const yOffset = (rect1.height + 80) / 2;
-
-            const centerX = baseX + xOffset;
-            const centerY = baseY - yOffset; // Y 座標往上是減
-
-            // 建立疊加節點 (Ghost Node)
-            const expNode = document.createElement('div');
-            const colorClass = sourceNode.classList.contains('green') ? 'green' : sourceNode.classList.contains('red') ? 'red' : 'white';
-            expNode.className = `node exp-node ${colorClass}`;
-
-            // 設定樣式與位移
-            expNode.style.position = 'absolute';
-            expNode.style.left = `${centerX}px`;
-            expNode.style.top = `${centerY}px`;
-            expNode.style.transform = `translate(-50%, -50%) scale(0.85)`;
-            expNode.style.zIndex = '1'; // 確保在背景但高於線條
-            expNode.style.opacity = '0.5'; // 半透明圖層
-            expNode.style.pointerEvents = 'none'; // 無法點擊
-
-            ['a', 'b', 'c', 'd'].forEach(pos => {
-              const sourceInput = sourceNode.querySelector(`input[data-pos="${pos}"]`);
-              const input = document.createElement('input');
-              input.type = 'text'; input.dataset.pos = pos;
-              input.value = sourceInput ? sourceInput.value : '';
-              input.readOnly = true;
-              input.style.width = sourceInput ? sourceInput.style.width : '3ch';
-              input.style.pointerEvents = 'none';
-              input.style.background = 'transparent';
-              input.style.borderColor = 'transparent';
-              expNode.appendChild(input);
-            });
-
-            container.appendChild(expNode);
-          }
-        });
-      });
-    }
-
     window.addRow = function (tabId, r = null, triggerSync = true) {
       const container = document.getElementById(`tree-${tabId}`);
       const rowsCount = container.querySelectorAll('.tree-row:not(.ref-row)').length;
@@ -765,7 +663,6 @@
       if (refRow) container.insertBefore(rowDiv, refRow);
       else container.appendChild(rowDiv);
 
-      drawExperimentalNodes(tabId); // 重繪疊加層
       if (triggerSync) scheduleSyncToCloud();
       return rowDiv;
     };
@@ -780,7 +677,6 @@
       }
       container.removeChild(rows[rows.length - 1]);
       drawArrows(tabId);
-      drawExperimentalNodes(tabId); // 重繪疊加層
       scheduleSyncToCloud();
     };
 
@@ -1021,10 +917,7 @@
 
     window.addEventListener('resize', () => {
       const activeTab = document.querySelector('.tab-content.active');
-      if (activeTab) {
-        drawArrows(activeTab.id);
-        drawExperimentalNodes(activeTab.id);
-      }
+      if (activeTab) drawArrows(activeTab.id);
     });
 
     // ================= 輸出與本地備份 =================

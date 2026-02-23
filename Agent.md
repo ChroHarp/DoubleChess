@@ -69,16 +69,18 @@ AI 代理在處理資料或擴充邏輯時，**必須絕對遵守**以下三大�
 
 ## **4\. 資料儲存格式 (JSON Schema)**
 
-本專案將推演結果序列化為 JSON，並儲存於 Firebase Firestore (research\_data/board\_state) 中。 AI 代理若需要解析或生成 JSON，請遵循以下結構：
+本專案將推演結果序列化為 JSON，並儲存於 Firebase Firestore (research\_data/board\_state) 中。 
+為了支援 Firebase 的 Delta Updates 並且防範陣列賦值覆蓋的問題，`state` 內部的 `rows` 與 `nodes` 皆採用 Javascript **Map (Object)** 結構而非 JS Array。結構如下：
 
-\[  
-  {  
-    "id": "Lv\_0",  
-    "rows": \[  
-      {  
+```json
+{  
+  "Lv_0": {  
+    "id": "Lv_0",  
+    "rows": {  
+      "0": {  
         "r": "0",  
-        "nodes": \[  
-          {  
+        "nodes": {  
+          "0": {  
             "i": "0",  
             "color": "white|green|red",  
             "vals": {  
@@ -88,21 +90,26 @@ AI 代理在處理資料或擴充邏輯時，**必須絕對遵守**以下三大�
               "d": "0"  
             }  
           }  
-        \]  
+        }  
       }  
-    \]  
+    }  
   }  
-\]
+}
+```
 
 * **注意**：儲存的 JSON **不包含**唯讀的參照列 (.ref-row)，參照列是由前端 UI 在渲染時依據「層級參照規則」動態生成的。
 
 ## **5\. UI 與協作機制說明 (UI & Collaborative Mechanisms)**
 
 * **DOM 排列與 Focus 順序**：為了支援原生的 Tab 鍵順序 (左上-\>左下-\>右上-\>右下)，Node 的內部 CSS 採用 grid-auto-flow: column。因此 DOM 中的 input 順序定義為 a, b, c, d。  
-* **鍵盤方向鍵導航**：實作了智慧方向鍵邏輯，當游標在文字邊緣時按左右鍵，會自動跳躍至相鄰的 input 或相鄰的 Node。  
-* **Firebase 即時同步防抖 (Debounce & Conflict Resolution)**：  
-  * 修改數值後等待 0.6s 才會向雲端 Push。  
-  * 收到雲端資料時，程式會**略過正在 Focus 的 input**，以避免覆蓋正在打字的內容。
+* **鍵盤方向鍵導航**：實作了智慧方向鍵邏輯，當游標在文字邊緣時按左右鍵，會自動跳躍至相鄰的 input 或相鄰的 Node。
+* **緊密模式 (Compact Mode)**：可透過 UI 勾選來隱藏參照層，並縮小樹狀圖中垂直與水平的渲染間距為 10px。
+* **進階 Firebase 協作防寫衝突架構**：  
+  * **Offline Persistence**：透過 IndexedDB 快取加速跨分頁載入效能，並支援離線讀寫。
+  * **編輯鎖 (Level-based Lock)**：使用者在指定 `Lv_n` 進行輸入、增刪列或改色時，會於 Firebase `/locks` 節點租用 10 秒的編輯權；處於租用期的其他客戶端會看到紅色的唯讀警告標語 (.locked-banner)，並且所有輸入框無法被 Focus 點擊。
+  * **Delta 差異發布與反彈防禦 (Bounce-back Prevention)**：
+    * 修改數值後系統等待 0.6s 才利用 `updateDoc` 將純粹差異的欄位推上雲端，預防全面陣列覆寫的資料庫 Race Condition。
+    * 在 Debounce 等待期間觸發 `hasPendingChanges` 護盾，拒絕接收與覆寫雲端回傳的 snapshot，以保護客戶端暫存建立的新資料列 (DOM Element) 不被刪除。
 
 ## **6\. AI 代理任務指南 (Agent Directives)**
 
