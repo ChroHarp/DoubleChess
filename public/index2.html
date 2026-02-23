@@ -203,6 +203,33 @@
       border-bottom: none;
     }
 
+    body.compact-mode .tree-container {
+      gap: 10px !important;
+      padding-top: 10px !important;
+    }
+
+    body.compact-mode .tree-row {
+      gap: 10px !important;
+    }
+
+    body.compact-mode .ref-row {
+      display: none !important;
+    }
+
+    .compact-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: bold;
+      color: #2d3748;
+      cursor: pointer;
+      padding: 6px 12px;
+      background: #edf2f7;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      margin-left: auto;
+    }
+
     .ref-label {
       position: absolute;
       bottom: calc(100% + 5px);
@@ -360,6 +387,10 @@
       <div class="status-dot" id="status-dot"></div>
       <span id="status-text">連線中...</span>
     </div>
+
+    <label class="compact-toggle">
+      <input type="checkbox" id="compactModeToggle" onchange="window.toggleCompactMode(event)"> 緊密模式
+    </label>
 
     <button class="btn export" onclick="window.exportToImage()">🖼️ 匯出當前畫面</button>
     <button class="btn save" onclick="window.saveData()">💾 備份 (JSON)</button>
@@ -925,18 +956,19 @@
             if (!toNode) return;
             const rectTo = toNode.getBoundingClientRect();
             let startX, startY, endX, endY;
+            const offsetGap = document.body.classList.contains('compact-mode') ? 2 : 8;
             if (direction === 'left') {
               startX = rectFrom.left - containerRect.left + container.scrollLeft;
               startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
               endX = rectTo.right - containerRect.left + container.scrollLeft;
               endY = rectTo.top + rectTo.height / 2 - containerRect.top + container.scrollTop;
-              drawLine(startX, startY, endX + 8, endY);
+              drawLine(startX, startY, endX + offsetGap, endY);
             } else {
               startX = rectFrom.right - containerRect.left + container.scrollLeft;
               startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
               endX = rectTo.left - containerRect.left + container.scrollLeft;
               endY = rectTo.top + rectTo.height / 2 - containerRect.top + container.scrollTop;
-              drawLine(startX, startY, endX - 8, endY);
+              drawLine(startX, startY, endX - offsetGap, endY);
             }
           };
 
@@ -952,8 +984,9 @@
       }
 
       // 處理最後一列連線到參照列 (Reference Row)
+      const isCompact = document.body.classList.contains('compact-mode');
       const refRow = container.querySelector('.ref-row');
-      if (refRow && rows.length > 0) {
+      if (!isCompact && refRow && rows.length > 0) {
         const lastRow = rows[rows.length - 1];
         const r = parseInt(lastRow.dataset.r);
         const numNodes = 2 * r + 1;
@@ -1033,16 +1066,36 @@
       }
     });
 
+    window.toggleCompactMode = function (e) {
+      if (e.target.checked) {
+        document.body.classList.add('compact-mode');
+      } else {
+        document.body.classList.remove('compact-mode');
+      }
+      setTimeout(() => {
+        const activeTab = document.querySelector('.tab-content.active');
+        if (activeTab) {
+          drawArrows(activeTab.id);
+          if (typeof drawExperimentalNodes === 'function') drawExperimentalNodes(activeTab.id);
+        }
+      }, 50);
+    };
+
     // ================= 輸出與本地備份 =================
     window.exportToImage = function () {
-      const activeTab = document.querySelector('.tab-content.active .tree-container');
+      const activeTabElement = document.querySelector('.tab-content.active');
+      if (!activeTabElement) return;
+      const activeTab = activeTabElement.querySelector('.tree-container');
       if (!activeTab) return;
+
+      const tabId = activeTabElement.id; // e.g., 'Lv_0'
       const pickers = activeTab.querySelectorAll('.color-picker');
       pickers.forEach(p => p.style.display = 'none');
 
       html2canvas(activeTab, { backgroundColor: "#ffffff", scale: 2 }).then(canvas => {
         const link = document.createElement('a');
-        link.download = `矩陣紀錄_${new Date().getTime()}.png`;
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        link.download = `${tabId}_${dateStr}.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
         pickers.forEach(p => p.style.display = '');
