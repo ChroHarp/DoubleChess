@@ -276,8 +276,17 @@
         function normalizeToArray(data) {
             if (!data) return [];
             if (Array.isArray(data)) return data;
-            const keys = Object.keys(data).filter(k => !isNaN(parseInt(k))).sort((a, b) => parseInt(a) - parseInt(b));
-            return keys.map(k => data[k]);
+
+            const keys = Object.keys(data);
+            if (keys.length === 0) return [];
+
+            // 如果 key 是純數字 (例如 r 或 i)，就照數字排序
+            if (!isNaN(parseInt(keys[0]))) {
+                const numericKeys = keys.filter(k => !isNaN(parseInt(k))).sort((a, b) => parseInt(a) - parseInt(b));
+                return numericKeys.map(k => data[k]);
+            }
+            // 如果 key 是文字 (例如 Lv_0)，直接回傳 values 並稍後排序
+            return Object.values(data);
         }
 
         // 接收資料並繪製 Edge 視圖
