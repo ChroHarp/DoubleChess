@@ -359,6 +359,102 @@
       border: 2px solid #3182ce;
       background: #fff;
     }
+
+    /* 操作手冊 Modal 樣式 */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-content {
+      background: #fff;
+      padding: 30px 40px;
+      border-radius: 12px;
+      width: 80%;
+      max-width: 800px;
+      max-height: 85vh;
+      overflow-y: auto;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+      position: relative;
+      line-height: 1.6;
+      color: #2d3748;
+    }
+
+    .modal-content h1,
+    .modal-content h2,
+    .modal-content h3 {
+      color: #1a202c;
+      margin-top: 1.5em;
+      margin-bottom: 0.5em;
+    }
+
+    .modal-content h1 {
+      margin-top: 0;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 10px;
+    }
+
+    .modal-content hr {
+      border: 0;
+      border-top: 1px solid #e2e8f0;
+      margin: 20px 0;
+    }
+
+    .modal-content ul,
+    .modal-content ol {
+      padding-left: 20px;
+    }
+
+    .modal-content li {
+      margin-bottom: 8px;
+    }
+
+    .modal-content code {
+      background: #edf2f7;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+
+    .modal-content blockquote {
+      border-left: 4px solid #3182ce;
+      margin: 0;
+      padding-left: 15px;
+      color: #4a5568;
+    }
+
+    .close-btn {
+      position: absolute;
+      top: 20px;
+      right: 25px;
+      font-size: 28px;
+      font-weight: bold;
+      color: #a0aec0;
+      cursor: pointer;
+      transition: color 0.2s;
+      line-height: 1;
+    }
+
+    .close-btn:hover {
+      color: #e53e3e;
+    }
+
+    .btn.help {
+      background: #ed8936;
+      /* Orange */
+    }
+
+    .btn.help:hover {
+      background: #dd6b20;
+    }
   </style>
 </head>
 
@@ -380,7 +476,7 @@
     <label class="compact-toggle">
       <input type="checkbox" id="compactModeToggle" onchange="window.toggleCompactMode(event)"> 緊密模式
     </label>
-
+    <button class="btn help" onclick="document.getElementById('helpModal').style.display='flex'">📖 操作手冊</button>
     <button class="btn export" onclick="window.exportToImage()">🖼️ 匯出當前畫面</button>
     <button class="btn save" onclick="window.saveData()">💾 備份 (JSON)</button>
     <button class="btn load" onclick="document.getElementById('fileInput').click()">📂 匯入覆蓋</button>
@@ -388,6 +484,82 @@
   </div>
 
   <div class="tab-contents" id="tab-contents"></div>
+
+  <!-- 操作手冊 Modal -->
+  <div id="helpModal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="document.getElementById('helpModal').style.display='none'">&times;</span>
+
+      <h1>🎯 4元數 Node 紀錄表 - 學生操作手冊</h1>
+      <p>歡迎來到 <strong>4元數 Node 紀錄表</strong>！這是一個幫助你進行矩陣與節點數值推演的視覺化工具。所有的紀錄都會<strong>即時同步到雲端</strong>，讓你與組員們可以輕鬆共編與討論。
+      </p>
+      <p>本手冊會教你如何建立分頁、新增數值、以及利用疊加參照層來推導規律。</p>
+      <hr>
+
+      <h2>🚀 1. 介面基本操作</h2>
+      <h3>建立與切換「Lv 分頁」</h3>
+      <p>在最上方的控制列，你可以看到各種按鈕：</p>
+      <ul>
+        <li><strong>「+ 新增 Lv 分頁」</strong>：當你完成當前層級 (Level) 的推演後，按此按鈕會建立新的一頁（例如從 Lv 0 推進到 Lv 1）。</li>
+        <li><strong>分頁切換器</strong>：利用「◀ 上一頁」與「下一頁 ▶」按鈕，在不同的推演步驟間來回檢視。</li>
+      </ul>
+
+      <h3>在分頁中增加資料列</h3>
+      <ul>
+        <li><strong>「⬆️ 往上新增一列 Node (+2)」</strong>：點擊後，會在現有的樹狀圖頂端再往上長出一整列矩陣，每一列的節點數量會比下一列多 2 個，方便你展開推演脈絡。</li>
+        <li><strong>「⬇️ 刪除最上列 (還原)」</strong>：如果按錯了或者推演方向有誤，點擊即可移除最上面的一列。</li>
+      </ul>
+      <hr>
+
+      <h2>🧮 2. 編輯與標記矩陣 (Nodes)</h2>
+      <p>畫面上的每一個方塊，都代表一個 <strong>2x2 的矩陣</strong>，內部包含四個數字 (a, c 在第一排，b, d 在第二排)。</p>
+
+      <h3>輸入數值</h3>
+      <ol>
+        <li>直接點擊 Node 內的白色小框框即可打字輸入代數或數字。</li>
+        <li><strong>鍵盤快速導覽</strong>：使用鍵盤的 <strong>「上、下、左、右方向鍵」</strong>，可以在格子之間快速跳躍移動，不需要一直用滑鼠點擊。</li>
+      </ol>
+
+      <h3>標記節點狀態 O 與 X</h3>
+      <p>當你需要標記哪個節點符合特定規律條件（勝/敗點），你可以：</p>
+      <ol>
+        <li>將滑鼠<strong>停留在該方塊 (Node) 的上方</strong>。</li>
+        <li>方塊上方會浮現 <strong>綠色「O」</strong> 與 <strong>紅色「X」</strong> 小按鈕。</li>
+        <li>點擊對應按鈕，方塊就會變色，方便你視覺化統整規律！<br>
+          <em>註：如果標記錯誤，再點擊一次同一個按鈕就會恢復白色。</em>
+        </li>
+      </ol>
+      <hr>
+
+      <h2>🔍 3. 疊加參照層 (Reference Layer) - 進階功能</h2>
+      <p>為了幫助你觀察圖形的生長規律與遞迴關係，系統會在 <strong>Lv 1 以上</strong> 的分頁中啟用「參照層」機制！</p>
+
+      <h3>唯獨參照列</h3>
+      <p>在樹狀圖的最頂端，你會看到一列半透明、無法編輯的數字框，上方標示著 <strong><code>[ 參照自 Lv ... ]</code></strong>。<br>
+        這代表這一列的數字，是系統自動幫你從先前的推演步驟中提取出來的，讓你可以「對照上一層的最後一列」來繼續往上推演，不需要一直切換前後頁確認數字。</p>
+
+      <h3>半透明「疊加層」開關</h3>
+      <p>在「參照自 Lv...」那行文字的正下方，有一個 <strong>「顯示 Lv {當前層-1}」</strong> 的核取方塊 (Checkbox)。</p>
+      <ul>
+        <li>
+          <strong>打勾開啟</strong>：原本乾淨的背景上，會浮現許多<strong>半透明縮小的舊節點</strong>，這些是系統幫你把「上一頁的矩陣」依照精準的幾何位置直接<strong>疊加</strong>在現在的空隙中。
+        </li>
+        <li>你可以藉由這個疊加殘影，更清楚地看見「上一層的圖形如何發展、位移成了這一層」。</li>
+        <li>當畫面太雜亂時，隨時<strong>取消打勾</strong>就能瞬間隱藏它們。</li>
+      </ul>
+      <hr>
+
+      <h2>💾 4. 存檔、匯入與輸出圖片</h2>
+      <ul>
+        <li><strong>儲存雲端 (自動化)</strong>：你在格子內輸入的任何東西，只要停下動作 0.6 秒，就會自動變成「黃燈 儲存中...」，然後轉為「綠燈 已連線同步」存進共編資料庫，不須手動按檔儲存。</li>
+        <li><strong>「💾 備份 (JSON)」</strong>：下載一份 <code>.json</code> 檔案到你個人的電腦中備份，以防萬一。</li>
+        <li><strong>「📂 匯入覆蓋」</strong>：上傳你之前備份好的 <code>.json</code>
+          檔案，這會直接把這個進度<strong>強行覆蓋</strong>當前的畫面，並立刻同步給其他組員（操作前請與組員確認喔！）。</li>
+        <li><strong>「🖼️ 匯出當前畫面」</strong>：系統會幫你把整個樹狀圖變成一張超高畫質的去背圖片 (<code>.png</code>) 下載下來，寫報告、投影片時非常好用！</li>
+      </ul>
+      <p>祝你們數學專題研究順利！🚀</p>
+    </div>
+  </div>
 
   <!-- 使用 module 引入 Firebase v10 SDK -->
   <script type="module">
@@ -1012,6 +1184,14 @@
       reader.readAsText(file);
       event.target.value = "";
     };
+
+    // 點擊 Modal 外部關閉
+    window.onclick = function (event) {
+      const helpModal = document.getElementById('helpModal');
+      if (event.target === helpModal) {
+        helpModal.style.display = "none";
+      }
+    }
 
     // ================= 初始化連線監聽 =================
     setSyncStatus('syncing');
