@@ -991,47 +991,63 @@
 
             const storage = window.tabDataStorage[tabId] || [];
 
-            // 對每個 Node，畫從 parentId 到它的實線
-            storage.forEach(nd => {
-                if (!nd.parentId) return;
-                const parentNd = storage.find(n => n.id === nd.parentId);
-                if (!parentNd) return;
-
-                const nDOM = bounds.querySelector(`.node[data-id="${nd.id}"]`);
-                const pDOM = bounds.querySelector(`.node[data-id="${parentNd.id}"]`);
-                if (!nDOM || !pDOM) return;
-
-                // 為了精準，最安全是利用 offsetTop/offsetLeft 與 offsetWidth/offsetHeight
-                const pWidth = pDOM.offsetWidth;
-                const pHeight = pDOM.offsetHeight;
-                const nWidth = nDOM.offsetWidth;
-                const nHeight = nDOM.offsetHeight;
-
-                let startX = pDOM.offsetLeft;
-                let startY = pDOM.offsetTop;
-                let endX = nDOM.offsetLeft;
-                let endY = nDOM.offsetTop;
-
-                if (nd.y > parentNd.y) {
-                    // UPWARDS arrow: starts at center of parent, ends at Bottom of new node
-                    endY = nDOM.offsetTop + nHeight / 2 + 4;
-                } else if (nd.y < parentNd.y) {
-                    // DOWNWARDS arrow: starts at center of parent, ends at Top of new node
-                    endY = nDOM.offsetTop - nHeight / 2 - 4;
-                } else if (nd.x < parentNd.x) {
-                    // LEFT arrow
-                    endX = nDOM.offsetLeft + nWidth / 2 + 6;
-                } else if (nd.x > parentNd.x) {
-                    // RIGHT arrow
-                    endX = nDOM.offsetLeft - nWidth / 2 - 6;
-                }
-
+            // 輔助函式：畫單條線
+            const drawLine = (startX, startY, endX, endY) => {
                 const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 line.setAttribute('x1', startX); line.setAttribute('y1', startY);
                 line.setAttribute('x2', endX); line.setAttribute('y2', endY);
                 line.setAttribute('stroke', '#a0aec0'); line.setAttribute('stroke-width', '2');
                 line.setAttribute('marker-end', `url(#arrow-${tabId})`);
                 svg.appendChild(line);
+            };
+
+            storage.forEach(nd => {
+                const nDOM = bounds.querySelector(`.node[data-id="${nd.id}"]`);
+                if (!nDOM) return;
+
+                // 1. 繪製由 parent 產生的連線
+                if (nd.parentId) {
+                    const parentNd = storage.find(n => n.id === nd.parentId);
+                    const pDOM = bounds.querySelector(`.node[data-id="${nd.parentId}"]`);
+                    if (parentNd && pDOM) {
+                        const nWidth = nDOM.offsetWidth;
+                        const nHeight = nDOM.offsetHeight;
+
+                        let startX = pDOM.offsetLeft;
+                        let startY = pDOM.offsetTop;
+                        let endX = nDOM.offsetLeft;
+                        let endY = nDOM.offsetTop;
+
+                        if (nd.y > parentNd.y) {
+                            // UPWARDS arrow: starts at center of parent, ends at Bottom of new node
+                            endY = nDOM.offsetTop + nHeight / 2 + 4;
+                        } else if (nd.y < parentNd.y) {
+                            // DOWNWARDS arrow: starts at center of parent, ends at Top of new node
+                            endY = nDOM.offsetTop - nHeight / 2 - 4;
+                        } else if (nd.x < parentNd.x) {
+                            // LEFT arrow
+                            endX = nDOM.offsetLeft + nWidth / 2 + 6;
+                        } else if (nd.x > parentNd.x) {
+                            // RIGHT arrow
+                            endX = nDOM.offsetLeft - nWidth / 2 - 6;
+                        }
+                        drawLine(startX, startY, endX, endY);
+                    }
+                }
+
+                // 2. 如果正上方 (nd.y + 1) 有節點，畫一條向上的箭頭
+                // (前提是該上方節點的 parent 不是 nd 本身，避免重複畫)
+                const upNd = storage.find(n => n.x === nd.x && n.y === nd.y + 1);
+                if (upNd && upNd.parentId !== nd.id) {
+                    const upDOM = bounds.querySelector(`.node[data-id="${upNd.id}"]`);
+                    if (upDOM) {
+                        let startX = nDOM.offsetLeft;
+                        let startY = nDOM.offsetTop;
+                        let endX = upDOM.offsetLeft;
+                        let endY = upDOM.offsetTop + upDOM.offsetHeight / 2 + 4;
+                        drawLine(startX, startY, endX, endY);
+                    }
+                }
             });
         }
 
