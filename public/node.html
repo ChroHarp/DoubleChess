@@ -1405,9 +1405,21 @@
           };
 
           if (nextRow) {
-            const upNode = nextRow.querySelector(`.node[data-i="${i + 1}"]`);
-            if (upNode) {
-              const rectTo = upNode.getBoundingClientRect();
+            // Draw to the left parent (i)
+            const upLeftNode = nextRow.querySelector(`.node[data-i="${i}"]`);
+            if (upLeftNode) {
+              const rectTo = upLeftNode.getBoundingClientRect();
+              const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
+              const startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
+              const endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft;
+              const endY = rectTo.bottom - containerRect.top + container.scrollTop;
+              drawLine(startX, startY, endX, endY + 2);
+            }
+
+            // Draw to the right parent (i+1)
+            const upRightNode = nextRow.querySelector(`.node[data-i="${i + 1}"]`);
+            if (upRightNode) {
+              const rectTo = upRightNode.getBoundingClientRect();
               const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
               const startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
               const endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft;
