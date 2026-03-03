@@ -421,7 +421,7 @@
                         // 中軸或左側：向左畫 (左)
                         const leftNode = currentNodes[domIndex - 1];
                         const rectTo = leftNode.getBoundingClientRect();
-                        const startX = rectFrom.left - containerRect.left + container.scrollLeft;
+                        const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
                         const startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
                         const endX = rectTo.right - containerRect.left + container.scrollLeft;
                         const endY = rectTo.top + rectTo.height / 2 - containerRect.top + container.scrollTop;
@@ -431,7 +431,7 @@
                         // 中軸或右側：向右畫 (右)
                         const rightNode = currentNodes[domIndex + 1];
                         const rectTo = rightNode.getBoundingClientRect();
-                        const startX = rectFrom.right - containerRect.left + container.scrollLeft;
+                        const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
                         const startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
                         const endX = rectTo.left - containerRect.left + container.scrollLeft;
                         const endY = rectTo.top + rectTo.height / 2 - containerRect.top + container.scrollTop;
@@ -450,7 +450,7 @@
                             const downNode = prevNodes[targetDownDomIndex];
                             const rectTo = downNode.getBoundingClientRect();
                             const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
-                            const startY = rectFrom.bottom - containerRect.top + container.scrollTop;
+                            const startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
                             const endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft;
                             const endY = rectTo.top - containerRect.top + container.scrollTop;
                             drawLine(startX, startY, endX, endY - 4);

@@ -929,9 +929,18 @@
     // ================= 核心邏輯區塊 =================
 
     window.createTab = function (tabIdName = null, triggerSync = true) {
-      const tabId = tabIdName || `Lv_${tabsList.length}`;
+      let tabId = tabIdName;
+      if (!tabId) {
+        let newNum = 0;
+        while (tabsList.includes(`Lv_${newNum}`)) newNum++;
+        tabId = `Lv_${newNum}`;
+      }
+
       if (!tabsList.includes(tabId)) {
+        const currentActiveId = tabsList[currentIndex];
         tabsList.push(tabId);
+        tabsList.sort((a, b) => parseInt(a.split('_')[1] || '0') - parseInt(b.split('_')[1] || '0'));
+        if (currentActiveId) currentIndex = tabsList.indexOf(currentActiveId);
       }
 
       const tabContent = document.createElement('div');
@@ -1400,7 +1409,7 @@
             if (upNode) {
               const rectTo = upNode.getBoundingClientRect();
               const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
-              const startY = rectFrom.top - containerRect.top + container.scrollTop;
+              const startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
               const endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft;
               const endY = rectTo.bottom - containerRect.top + container.scrollTop;
               drawLine(startX, startY, endX, endY + 2);
@@ -1413,13 +1422,13 @@
             let startX, startY, endX, endY;
             const offsetGap = document.body.classList.contains('compact-mode') ? 2 : 8;
             if (direction === 'left') {
-              startX = rectFrom.left - containerRect.left + container.scrollLeft;
+              startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
               startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
               endX = rectTo.right - containerRect.left + container.scrollLeft;
               endY = rectTo.top + rectTo.height / 2 - containerRect.top + container.scrollTop;
               drawLine(startX, startY, endX + offsetGap, endY);
             } else {
-              startX = rectFrom.right - containerRect.left + container.scrollLeft;
+              startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
               startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
               endX = rectTo.left - containerRect.left + container.scrollLeft;
               endY = rectTo.top + rectTo.height / 2 - containerRect.top + container.scrollTop;
@@ -1471,7 +1480,7 @@
             if (upNode) {
               const rectTo = upNode.getBoundingClientRect();
               const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
-              const startY = rectFrom.top - containerRect.top + container.scrollTop;
+              const startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
               const endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft;
               const endY = rectTo.bottom - containerRect.top + container.scrollTop;
               drawLine(startX, startY, endX, endY + 4);

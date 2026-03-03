@@ -794,7 +794,8 @@
                             const targetNd = window.tabDataStorage[tabId].find(n => n.id === nd.id);
                             if (targetNd) targetNd.vals[pos] = input.value;
 
-                            syncSymmetricNode(input, nd.id, tabId);
+                            // 移除對稱節點自動同步功能
+                            // syncSymmetricNode(input, nd.id, tabId);
                             scheduleSyncToCloud();
                         };
                         // input.onkeydown = // TODO 方位跳轉邏輯
@@ -1006,27 +1007,23 @@
                 const nWidth = nDOM.offsetWidth;
                 const nHeight = nDOM.offsetHeight;
 
-                let startX = pDOM.offsetLeft + pWidth / 2;
-                let startY = pDOM.offsetTop + pHeight / 2;
-                let endX = nDOM.offsetLeft + nWidth / 2;
-                let endY = nDOM.offsetTop + nHeight / 2;
+                let startX = pDOM.offsetLeft;
+                let startY = pDOM.offsetTop;
+                let endX = nDOM.offsetLeft;
+                let endY = nDOM.offsetTop;
 
-                if (nd.y < parentNd.y) {
-                    // UPWARDS arrow: starts at Top of parent, ends at Bottom of new node
-                    startY = pDOM.offsetTop;
-                    endY = nDOM.offsetTop + nHeight + 4;
-                } else if (nd.y > parentNd.y) {
-                    // DOWNWARDS arrow: starts at Bottom of parent, ends at Top of new node
-                    startY = pDOM.offsetTop + pHeight;
-                    endY = nDOM.offsetTop - 4;
+                if (nd.y > parentNd.y) {
+                    // UPWARDS arrow: starts at center of parent, ends at Bottom of new node
+                    endY = nDOM.offsetTop + nHeight / 2 + 4;
+                } else if (nd.y < parentNd.y) {
+                    // DOWNWARDS arrow: starts at center of parent, ends at Top of new node
+                    endY = nDOM.offsetTop - nHeight / 2 - 4;
                 } else if (nd.x < parentNd.x) {
                     // LEFT arrow
-                    startX = pDOM.offsetLeft;
-                    endX = nDOM.offsetLeft + nWidth + 6;
+                    endX = nDOM.offsetLeft + nWidth / 2 + 6;
                 } else if (nd.x > parentNd.x) {
                     // RIGHT arrow
-                    startX = pDOM.offsetLeft + pWidth;
-                    endX = nDOM.offsetLeft - 6;
+                    endX = nDOM.offsetLeft - nWidth / 2 - 6;
                 }
 
                 const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -1039,9 +1036,18 @@
         }
 
         window.createTab = function (tabIdName = null, triggerSync = true) {
-            const tabId = tabIdName || `Lv_${tabsList.length}`;
+            let tabId = tabIdName;
+            if (!tabId) {
+                let newNum = 0;
+                while (tabsList.includes(`Lv_${newNum}`)) newNum++;
+                tabId = `Lv_${newNum}`;
+            }
+
             if (!tabsList.includes(tabId)) {
+                const currentActiveId = tabsList[currentIndex];
                 tabsList.push(tabId);
+                tabsList.sort((a, b) => parseInt(a.split('_')[1] || '0') - parseInt(b.split('_')[1] || '0'));
+                if (currentActiveId) currentIndex = tabsList.indexOf(currentActiveId);
             }
 
             // 初始化資料庫
