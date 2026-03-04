@@ -327,6 +327,18 @@
             border-left-color: var(--accent-3);
         }
 
+        .column-2 .card-2 {
+            border-left: 3px solid transparent;
+        }
+
+        .column-2 .card-2:hover {
+            border-left-color: var(--accent-4);
+        }
+
+        .column-2 .card-2 .card-arrow {
+            color: var(--accent-4);
+        }
+
         .link-card:hover .card-arrow {
             opacity: 1;
             transform: translateX(0);
@@ -469,6 +481,19 @@
                 <div class="card-content">
                     <div class="card-title">n*m 節點</div>
                     <div class="card-desc">動態長寬網格結構紀錄表 (建構中)</div>
+                </div>
+                <svg class="card-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+            </a>
+
+            <a href="chess.html" class="link-card card-2">
+                <span class="card-number">02</span>
+                <div class="card-content">
+                    <div class="card-title">對弈程式</div>
+                    <div class="card-desc">矩形棋盤對弈環境</div>
                 </div>
                 <svg class="card-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
