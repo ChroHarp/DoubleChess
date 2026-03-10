@@ -277,6 +277,11 @@
             border-color: #e53e3e;
         }
 
+        .node.matched-node {
+            border: 3px solid #d69e2e !important;
+            box-shadow: 0 0 0 3px #d69e2e, 0 0 12px 3px rgba(214, 158, 46, 0.6);
+        }
+
         /* ===== 節點互動生成箭頭 (Hover) ===== */
         .arrow-btn {
             position: absolute;
@@ -532,7 +537,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, setDoc, updateDoc, deleteField, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, setDoc, updateDoc, deleteField, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         // 1. Firebase 初始化 (指向新的 board_state_rect)
         const firebaseConfig = {
@@ -793,7 +798,17 @@
 
                             // 尋找陣列中的物件並更新
                             const targetNd = window.tabDataStorage[tabId].find(n => n.id === nd.id);
-                            if (targetNd) targetNd.vals[pos] = input.value;
+                            if (targetNd) {
+                                targetNd.vals[pos] = input.value;
+
+                                // 即時比對快取
+                                const vStr = `${targetNd.vals.a || ''},${targetNd.vals.b || ''},${targetNd.vals.c || ''},${targetNd.vals.d || ''}`;
+                                if (vStr !== ',,,' && window.cachedNodeValues && window.cachedNodeValues.has(vStr)) {
+                                    nodeEl.classList.add('matched-node');
+                                } else {
+                                    nodeEl.classList.remove('matched-node');
+                                }
+                            }
 
                             // 移除對稱節點自動同步功能
                             // syncSymmetricNode(input, nd.id, tabId);
@@ -874,6 +889,14 @@
                         }
                     }
                 });
+
+                // Check for matched node in cache
+                const vStr = `${nd.vals.a || ''},${nd.vals.b || ''},${nd.vals.c || ''},${nd.vals.d || ''}`;
+                if (vStr !== ',,,' && window.cachedNodeValues && window.cachedNodeValues.has(vStr)) {
+                    nodeEl.classList.add('matched-node');
+                } else {
+                    nodeEl.classList.remove('matched-node');
+                }
 
                 // 設置絕對位置
                 nodeEl.style.left = `calc(2000px + ${nd.x * NODE_SIZE_X}px)`;
@@ -1208,6 +1231,43 @@
             if (event.target === document.getElementById('helpModal')) document.getElementById('helpModal').style.display = "none";
             if (event.target === document.getElementById('deleteModal')) document.getElementById('deleteModal').style.display = "none";
         }
+
+        // Fetch board_state from node.html for cache
+        window.cachedNodeValues = new Set();
+        const docRefNode = doc(db, 'research_data', 'board_state');
+        getDoc(docRefNode).then(snap => {
+            if (snap.exists()) {
+                const dbData = snap.data();
+                if (dbData.state) {
+                    Object.values(dbData.state).forEach(tab => {
+                        if (tab.rows) {
+                            Object.values(tab.rows).forEach(row => {
+                                if (row.nodes) {
+                                    Object.values(row.nodes).forEach(node => {
+                                        if (node.vals) {
+                                            const a = node.vals.a || '';
+                                            const b = node.vals.b || '';
+                                            const c = node.vals.c || '';
+                                            const d = node.vals.d || '';
+                                            if (a || b || c || d) {
+                                                window.cachedNodeValues.add(`${a},${b},${c},${d}`);
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    });
+                }
+
+                // Re-render current tab if it has been loaded
+                if (tabsList.length > 0 && currentIndex < tabsList.length) {
+                    renderCanvas(tabsList[currentIndex]);
+                }
+            }
+        }).catch(err => {
+            console.error("Failed to fetch node.html cache:", err);
+        });
 
         // 初始化連線
         setSyncStatus('syncing');
