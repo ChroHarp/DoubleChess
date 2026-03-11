@@ -212,7 +212,8 @@
       gap: 10px !important;
     }
 
-    body.compact-mode .ref-row {
+    body.compact-mode .ref-row,
+    body.hide-ref-row .ref-row {
       display: none !important;
     }
 
@@ -476,6 +477,9 @@
     <label class="compact-toggle">
       <input type="checkbox" id="compactModeToggle" onchange="window.toggleCompactMode(event)"> 緊密模式
     </label>
+    <label class="compact-toggle">
+      <input type="checkbox" id="hideRefRowToggle" onchange="window.toggleHideRefRow(event)"> 隱藏參照列
+    </label>
     <button class="btn help" onclick="document.getElementById('helpModal').style.display='flex'">📖 操作手冊</button>
     <button class="btn export" onclick="window.exportToImage()">🖼️ 匯出當前畫面</button>
     <button class="btn save" onclick="window.saveData()">💾 備份 (JSON)</button>
@@ -578,7 +582,7 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const docRef = doc(db, 'research_data', 'board_state');
+    const docRef = doc(db, 'research_data', 'board_state_3');
 
     // 2. 狀態變數
     let tabsList = [];
@@ -1056,8 +1060,9 @@
 
       // 處理最後一列連線到參照列 (Reference Row)
       const isCompact = document.body.classList.contains('compact-mode');
+      const isHideRef = document.body.classList.contains('hide-ref-row');
       const refRow = container.querySelector('.ref-row');
-      if (!isCompact && refRow && rows.length > 0) {
+      if (!isCompact && !isHideRef && refRow && rows.length > 0) {
         const lastRow = rows[rows.length - 1];
         const r = parseInt(lastRow.dataset.r);
         const numNodes = 2 * r + 1;
@@ -1139,6 +1144,20 @@
         document.body.classList.add('compact-mode');
       } else {
         document.body.classList.remove('compact-mode');
+      }
+      setTimeout(() => {
+        const activeTab = document.querySelector('.tab-content.active');
+        if (activeTab) {
+          drawArrows(activeTab.id);
+        }
+      }, 50);
+    };
+
+    window.toggleHideRefRow = function (e) {
+      if (e.target.checked) {
+        document.body.classList.add('hide-ref-row');
+      } else {
+        document.body.classList.remove('hide-ref-row');
       }
       setTimeout(() => {
         const activeTab = document.querySelector('.tab-content.active');
