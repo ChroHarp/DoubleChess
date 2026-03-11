@@ -181,6 +181,25 @@
             flex-direction: column;
         }
 
+        /* 控制參照層顯示/隱藏 */
+        .hide-ref-layer .exp-node {
+            display: none !important;
+        }
+
+        .ref-layer-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: bold;
+            color: #2d3748;
+            cursor: pointer;
+            padding: 6px 12px;
+            background: #edf2f7;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            margin-left: auto;
+        }
+
         /* 鎖定相關 UI 樣式 */
         .locked-banner {
             background: #fed7d7;
@@ -280,6 +299,38 @@
         .node.matched-node {
             border: 3px solid #d69e2e !important;
             box-shadow: 0 0 0 3px #d69e2e, 0 0 12px 3px rgba(214, 158, 46, 0.6);
+        }
+
+        .ref-label {
+            position: absolute;
+            color: #718096;
+            font-weight: bold;
+            font-size: 14px;
+            background: white;
+            padding: 5px 10px;
+            border-radius: 6px;
+            white-space: nowrap;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 15px;
+            z-index: 10;
+            transform: translate(-50%, -50%);
+            border: 1px dashed #cbd5e0;
+        }
+
+        .ref-node {
+            cursor: not-allowed !important;
+            transform: translate(-50%, -50%) scale(0.95) !important;
+            opacity: 0.8;
+            border-style: dashed !important;
+        }
+
+        .ref-node input {
+            cursor: not-allowed;
+            pointer-events: none;
+            background: rgba(255, 255, 255, 0.3) !important;
+            border-color: transparent !important;
         }
 
         /* ===== 節點互動生成箭頭 (Hover) ===== */
@@ -471,7 +522,7 @@
     </style>
 </head>
 
-<body>
+<body class="hide-ref-layer">
 
     <div class="header-controls">
         <button class="btn" onclick="window.createTab()">+ 新增 Lv 分頁</button>
@@ -487,6 +538,11 @@
             <div class="status-dot" id="status-dot"></div>
             <span id="status-text">連線中...</span>
         </div>
+
+        <label class="ref-layer-toggle" id="refLayerToggleContainer" style="display: none;">
+            <input type="checkbox" id="refLayerToggleCheckbox" onchange="window.toggleRefLayer(event)">
+            <span id="refLayerToggleText">顯示上層</span>
+        </label>
 
         <button class="btn help" onclick="document.getElementById('helpModal').style.display='flex'">📖 操作手冊</button>
         <button class="btn export" onclick="window.exportToImage()">🖼️ 匯出當前畫面</button>
@@ -560,8 +616,8 @@
         let currentIndex = 0;
 
         // state 物件存放 Tab 資料: state["Lv_0"] = [{id:"root", x:0, y:0, type:"center", parentId:null, ...}]
-        const NODE_SIZE_X = 140; // 節點佈局間隔 X
-        const NODE_SIZE_Y = 120; // 節點佈局間隔 Y
+        const NODE_SIZE_X = 120; // 節點佈局間隔 X
+        const NODE_SIZE_Y = 160; // 節點佈局間隔 Y
 
         let isSyncingFromCloud = false;
         let syncTimeout = null;
@@ -805,6 +861,12 @@
                                 const vStr = `${targetNd.vals.a || ''},${targetNd.vals.b || ''},${targetNd.vals.c || ''},${targetNd.vals.d || ''}`;
                                 if (vStr !== ',,,' && window.cachedNodeValues && window.cachedNodeValues.has(vStr)) {
                                     nodeEl.classList.add('matched-node');
+                                    const matchData = window.cachedNodeValues.get(vStr);
+                                    if (matchData && matchData.color && matchData.color !== 'white') {
+                                        targetNd.color = matchData.color; // update data model
+                                        nodeEl.className = `node ${matchData.color}`;
+                                        nodeEl.classList.add('matched-node');
+                                    }
                                 } else {
                                     nodeEl.classList.remove('matched-node');
                                 }
@@ -894,6 +956,20 @@
                 const vStr = `${nd.vals.a || ''},${nd.vals.b || ''},${nd.vals.c || ''},${nd.vals.d || ''}`;
                 if (vStr !== ',,,' && window.cachedNodeValues && window.cachedNodeValues.has(vStr)) {
                     nodeEl.classList.add('matched-node');
+                    const matchData = window.cachedNodeValues.get(vStr);
+                    if (matchData && matchData.color && matchData.color !== 'white') {
+                        if (nd.color !== matchData.color) {
+                            nd.color = matchData.color; // Sync color to storage model
+                            
+                            // Reapply node class with new color
+                            nodeEl.className = `node ${nd.color}`;
+                            nodeEl.classList.add('matched-node');
+                            
+                            if (activeElement && nodeEl.contains(activeElement)) {
+                                nodeEl.classList.add('focused');
+                            }
+                        }
+                    }
                 } else {
                     nodeEl.classList.remove('matched-node');
                 }
@@ -908,18 +984,25 @@
                 existingDoms[id].remove();
             });
 
+            drawReferenceNodes(tabId);
             drawArrowsSVG(tabId);
+            drawExperimentalNodes(tabId);
 
-            // 自動置中與跟隨最新節點
+            // 以下這段自動置中跟隨最新節點的邏輯會導致輸入或新增節點時畫面跳動，因此註解掉
+            /*
             setTimeout(() => {
                 const container = document.getElementById(`tree-${tabId}`);
                 if (container) {
                     let maxY = 0;
                     (window.tabDataStorage[tabId] || []).forEach(nd => { if (nd.y > maxY) maxY = nd.y; });
                     container.scrollLeft = 2000 - (container.clientWidth / 2);
-                    container.scrollTop = 4000 - 2000 - (maxY * NODE_SIZE_Y) - 150;
+                    
+                    // 新增了 Reference Row，所以畫面需要往上移 (Y值更大) 來讓最新節點居中偏下
+                    // 現在往上捲動 1.2 個單位
+                    container.scrollTop = 4000 - 2000 - ((maxY + 1.2) * NODE_SIZE_Y) - 150;
                 }
             }, 50);
+            */
         }
 
         // === 新增節點機制 ===
@@ -952,6 +1035,15 @@
                 color: 'white',
                 vals: { a: '', b: '', c: '', d: '' }
             };
+
+            // Check for matched node in cache and apply color
+            const vStr = `${newNode.vals.a || ''},${newNode.vals.b || ''},${newNode.vals.c || ''},${newNode.vals.d || ''}`;
+            if (vStr !== ',,,' && window.cachedNodeValues && window.cachedNodeValues.has(vStr)) {
+                const matchData = window.cachedNodeValues.get(vStr);
+                if (matchData && matchData.color && matchData.color !== 'white') {
+                    newNode.color = matchData.color;
+                }
+            }
 
             storage.push(newNode);
             renderCanvas(tabId); // 本地先畫
@@ -1073,6 +1165,186 @@
                     }
                 }
             });
+
+            // Reference Row connection
+            const refNodes = Array.from(bounds.querySelectorAll('.ref-node'));
+            if (refNodes.length > 0) {
+                // Find highest row of current layer (which has maxY)
+                const currentHighestNodes = storage.filter(nd => {
+                    // find max y from storage
+                    const maxCurrentY = Math.max(...storage.map(s => s.y));
+                    return nd.y === maxCurrentY;
+                });
+                
+                currentHighestNodes.forEach(fromNd => {
+                    const fromDOM = bounds.querySelector(`.node[data-id="${fromNd.id}"]`);
+                    if (!fromDOM) return;
+                    
+                    const startX = fromDOM.offsetLeft;
+                    const startY = fromDOM.offsetTop;
+                    const x = fromNd.x;
+                    
+                    const targetUp = refNodes.find(n => parseInt(n.dataset.x) === x);
+                    if (targetUp) {
+                        const endX = targetUp.offsetLeft;
+                        const endY = targetUp.offsetTop + targetUp.offsetHeight / 2 + 4;
+                        drawLine(startX, startY, endX, endY);
+                    }
+                    
+                    if (x !== 0) {
+                        const targetX = x > 0 ? x - 1 : x + 1;
+                        const targetDiag = refNodes.find(n => parseInt(n.dataset.x) === targetX);
+                        if (targetDiag) {
+                            let endX = targetDiag.offsetLeft;
+                            if (x < 0) endX -= 12;
+                            else if (x > 0) endX += 12;
+                            const endY = targetDiag.offsetTop + targetDiag.offsetHeight / 2 + 4;
+                            drawLine(startX, startY, endX, endY);
+                        }
+                    }
+                });
+            }
+        }
+
+        window.toggleRefLayer = function (event) {
+            if (event.target.checked) {
+                document.body.classList.remove('hide-ref-layer');
+            } else {
+                document.body.classList.add('hide-ref-layer');
+            }
+        };
+
+        function drawExperimentalNodes(tabId) {
+            const nMatch = tabId.match(/Lv_(\d+)/);
+            if (!nMatch) return;
+            const n = parseInt(nMatch[1]);
+            const container = document.getElementById(`tree-${tabId}`);
+            if (!container) return;
+            const bounds = container.querySelector('.canvas-bounds');
+            if (!bounds) return;
+
+            // Remove existing
+            bounds.querySelectorAll('.exp-node').forEach(n => n.remove());
+
+            if (n < 1) return; // Support from Lv_1
+            const sourceTabId = `Lv_${n - 1}`;
+            const sourceStorage = window.tabDataStorage[sourceTabId];
+            if (!sourceStorage || sourceStorage.length === 0) return;
+
+            const baseY = 2000;
+
+            let minY = Math.min(...sourceStorage.map(nd => nd.y));
+            let maxY = Math.max(...sourceStorage.map(nd => nd.y));
+            const sourceN = n - 1; // 疊加層是來自上一層
+
+            sourceStorage.forEach(sourceNd => {
+                // 如果疊加層（來源層）是偶數，顯示第二列到最後一列（只有第一列不顯示）
+                if (sourceN % 2 === 0) {
+                    if (sourceNd.y === minY) return;
+                } else {
+                    // 原本的規則：奇數層，不顯示第一列與最後一列
+                    if (sourceNd.y === minY || sourceNd.y === maxY) return;
+                }
+
+                const expNode = document.createElement('div');
+                const colorClass = sourceNd.color || 'white';
+                expNode.className = `node exp-node ${colorClass}`;
+                expNode.style.position = 'absolute';
+                expNode.style.left = `calc(2000px + ${sourceNd.x * NODE_SIZE_X}px)`;
+                expNode.style.bottom = `${baseY + sourceNd.y * NODE_SIZE_Y + (NODE_SIZE_Y / 2)}px`;
+                expNode.style.transform = `translate(-50%, -50%) scale(0.85)`;
+                expNode.style.zIndex = '1';
+                expNode.style.opacity = '0.5';
+                expNode.style.pointerEvents = 'none';
+
+                const grid = document.createElement('div');
+                grid.className = 'node-grid';
+
+                ['a', 'b', 'c', 'd'].forEach(pos => {
+                    const input = document.createElement('input');
+                    input.type = 'text'; input.dataset.pos = pos;
+                    input.value = sourceNd.vals ? sourceNd.vals[pos] || '' : '';
+                    input.readOnly = true;
+                    input.style.width = Math.max(3, input.value.length + 1) + 'ch';
+                    input.style.pointerEvents = 'none';
+                    input.style.background = 'transparent';
+                    input.style.borderColor = 'transparent';
+                    grid.appendChild(input);
+                });
+
+                expNode.appendChild(grid);
+                bounds.appendChild(expNode);
+            });
+        }
+
+        function drawReferenceNodes(tabId) {
+            const nMatch = tabId.match(/Lv_(\d+)/);
+            if (!nMatch) return;
+            const n = parseInt(nMatch[1]);
+            const container = document.getElementById(`tree-${tabId}`);
+            if (!container) return;
+            const bounds = container.querySelector('.canvas-bounds');
+            if (!bounds) return;
+
+            bounds.querySelectorAll('.ref-node').forEach(n => n.remove());
+            bounds.querySelectorAll('.ref-label').forEach(n => n.remove());
+
+            if (n < 2) return; 
+
+            const sourceN = n % 2 === 0 ? n - 1 : n - 2;
+            const sourceTabId = `Lv_${sourceN}`;
+            const sourceStorage = window.tabDataStorage[sourceTabId];
+            if (!sourceStorage || sourceStorage.length === 0) return;
+
+            const baseY = 2000;
+            const maxY = Math.max(...sourceStorage.map(nd => nd.y));
+            const targetNodes = sourceStorage.filter(nd => nd.y === maxY);
+
+            if (targetNodes.length === 0) return;
+
+            // 計算現有圖層的最高點 (最大 Y)，參照列將懸空放置在其上方，留出一段距離
+            const currentStorage = window.tabDataStorage[tabId] || [];
+            const currentMaxY = currentStorage.length > 0 ? Math.max(...currentStorage.map(nd => nd.y)) : 0;
+            const refRowYOffset = currentMaxY + 1.2; // 往上墊高 1.2 個單位的間隔
+
+            targetNodes.forEach(sourceNd => {
+                const refNode = document.createElement('div');
+                const colorClass = sourceNd.color || 'white';
+                refNode.className = `node ref-node ${colorClass}`;
+                refNode.dataset.id = `ref_${sourceNd.id}`;
+                refNode.dataset.x = sourceNd.x;
+                refNode.dataset.y = 'ref'; // Mark as ref row
+                refNode.style.position = 'absolute';
+                refNode.style.left = `calc(2000px + ${sourceNd.x * NODE_SIZE_X}px)`;
+                refNode.style.bottom = `${baseY + refRowYOffset * NODE_SIZE_Y}px`;
+
+                const grid = document.createElement('div');
+                grid.className = 'node-grid';
+
+                ['a', 'b', 'c', 'd'].forEach(pos => {
+                    const input = document.createElement('input');
+                    input.type = 'text'; input.dataset.pos = pos;
+                    input.value = sourceNd.vals ? sourceNd.vals[pos] || '' : '';
+                    input.readOnly = true;
+                    input.style.width = Math.max(3, input.value.length + 1) + 'ch';
+                    grid.appendChild(input);
+                });
+
+                refNode.appendChild(grid);
+                bounds.appendChild(refNode);
+            });
+
+            const minX = Math.min(...targetNodes.map(nd => nd.x));
+            const maxX = Math.max(...targetNodes.map(nd => nd.x));
+            const centerX = (minX + maxX) / 2;
+
+            const label = document.createElement('div');
+            label.className = 'ref-label';
+            label.innerHTML = `<span>[ 參照自 Lv_${sourceN} 的最後一列 ]</span>`;
+            label.style.left = `calc(2000px + ${centerX * NODE_SIZE_X}px)`;
+            label.style.bottom = `${baseY + refRowYOffset * NODE_SIZE_Y + 130}px`;
+            label.style.transform = `translate(-50%, 0)`;
+            bounds.appendChild(label);
         }
 
         window.createTab = function (tabIdName = null, triggerSync = true) {
@@ -1147,7 +1419,30 @@
             document.getElementById('current-tab-label').innerText = tabId.replace('_', ' ');
             document.getElementById('prev-btn').disabled = (currentIndex === 0);
             document.getElementById('next-btn').disabled = (currentIndex === tabsList.length - 1);
+
+            const nMatch = tabId.match(/Lv_(\d+)/);
+            const refToggleContainer = document.getElementById('refLayerToggleContainer');
+            const refToggleText = document.getElementById('refLayerToggleText');
+            if (nMatch && parseInt(nMatch[1]) >= 1) {
+                const n = parseInt(nMatch[1]);
+                refToggleContainer.style.display = 'flex';
+                refToggleText.innerText = `疊加顯示 Lv_${n - 1}`;
+            } else {
+                refToggleContainer.style.display = 'none';
+            }
+
             renderCanvas(tabId);
+
+            // 切換分頁時進行一次定位
+            setTimeout(() => {
+                const container = document.getElementById(`tree-${tabId}`);
+                if (container) {
+                    let maxY = 0;
+                    (window.tabDataStorage[tabId] || []).forEach(nd => { if (nd.y > maxY) maxY = nd.y; });
+                    container.scrollLeft = 2000 - (container.clientWidth / 2);
+                    container.scrollTop = 4000 - 2000 - ((maxY + 1.2) * NODE_SIZE_Y) - 150;
+                }
+            }, 50);
         };
 
         window.prevTab = function () { window.switchTab(currentIndex - 1); };
@@ -1232,8 +1527,8 @@
             if (event.target === document.getElementById('deleteModal')) document.getElementById('deleteModal').style.display = "none";
         }
 
-        // Fetch board_state from node.html for cache
-        window.cachedNodeValues = new Set();
+        // 加載 node.html 的資料建立快取 (供比對高亮使用)
+        window.cachedNodeValues = new Map();
         const docRefNode = doc(db, 'research_data', 'board_state');
         getDoc(docRefNode).then(snap => {
             if (snap.exists()) {
@@ -1250,7 +1545,10 @@
                                             const c = node.vals.c || '';
                                             const d = node.vals.d || '';
                                             if (a || b || c || d) {
-                                                window.cachedNodeValues.add(`${a},${b},${c},${d}`);
+                                                const vStr = `${a},${b},${c},${d}`;
+                                                window.cachedNodeValues.set(vStr, {
+                                                    color: node.color || 'white'
+                                                });
                                             }
                                         }
                                     });
