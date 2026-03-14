@@ -589,6 +589,7 @@
     let currentIndex = 0;
     let isSyncingFromCloud = false; // 避免雲端更新時觸發二次上傳
     let syncTimeout = null;
+    let isCloudLoaded = false; // 防護旗標：在第一次雲端 snapshot 抵達前，禁止任何 sync 上傳
 
     // 3. UI 燈號控制
     function setSyncStatus(status) {
@@ -632,6 +633,11 @@
     // 5. 將資料推播至 Firebase 雲端 (Debounce 防抖)
     function scheduleSyncToCloud() {
       if (isSyncingFromCloud) return; // 如果正在接收雲端資料，不反向推播
+      // 【安全防護】尚未收到第一次雲端資料前，禁止任何上傳，避免空快取電腦把空資料覆蓋雲端
+      if (!isCloudLoaded) {
+        console.warn('scheduleSyncToCloud: 雲端資料尚未載入，跳過此次 sync。');
+        return;
+      }
 
       setSyncStatus('syncing');
       clearTimeout(syncTimeout);
@@ -1231,13 +1237,20 @@
         setSyncStatus('online');
       } else {
         // 第一個開啟這個專案的人：建立空白的第一頁，並推播給雲端
+        isCloudLoaded = true; // 雲端文件不存在也算已知狀態
         if (tabsList.length === 0) {
           window.createTab();
         }
       }
+      // 【關鍵】標記雲端資料已成功載入，解除 sync 防護
+      if (!isCloudLoaded) {
+        isCloudLoaded = true;
+        console.log('isCloudLoaded = true，解除 sync 防護。');
+      }
     }, (error) => {
       console.error("Firestore 監聽失敗 (請確認 Rules 是否為允許讀寫):", error);
       setSyncStatus('error');
+      if (!isCloudLoaded) isCloudLoaded = true;
       if (tabsList.length === 0) window.createTab(null, false); // 離線狀態下至少能本機運作
     });
 

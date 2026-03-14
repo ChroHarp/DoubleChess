@@ -646,6 +646,7 @@
     let syncTimeout = null;
     let lastSyncState = null; // 儲存最後一次與雲端同步的完整狀態，用以計算 Delta (差異)
     let hasPendingChanges = false; // 防呆：是否有正在等待送出 0.6 秒防抖的變更
+    let isCloudLoaded = false; // 防護旗標：在第一次雲端 snapshot 抵達前，禁止任何 sync 上傳
     const clientId = Math.random().toString(36).substring(2, 15); // 隨機產生這台裝置的 Session ID
     let currentLocks = {}; // 紀錄從雲端抓下來的所有鎖定狀態
     let lockThrottlers = {}; // 用於節流本機往雲端送出鎖定要求的頻率
@@ -796,6 +797,11 @@
     // 5. 將資料推播至 Firebase 雲端 (Debounce 防抖 + Delta 差異更新)
     function scheduleSyncToCloud() {
       if (isSyncingFromCloud) return; // 如果正在接收雲端資料，不反向推播
+      // 【安全防護】尚未收到第一次雲端資料前，禁止任何上傳，避免空快取電腦把空資料覆蓋雲端
+      if (!isCloudLoaded) {
+        console.warn('scheduleSyncToCloud: 雲端資料尚未載入，跳過此次 sync。');
+        return;
+      }
 
       hasPendingChanges = true; // 鎖住，告訴系統目前本機有最新草稿
       setSyncStatus('syncing');
@@ -805,7 +811,11 @@
           const currentState = getAppState();
 
           if (!lastSyncState) {
-            await setDoc(docRef, { state: currentState, timestamp: new Date().toISOString() });
+            // lastSyncState 不應為 null（已由 isCloudLoaded 防護），保守放棄不覆蓋雲端
+            console.warn('scheduleSyncToCloud: lastSyncState 為 null，放棄此次 sync。');
+            hasPendingChanges = false;
+            setSyncStatus('online');
+            return;
           } else {
             const diff = calculateDiff(lastSyncState, currentState, 'state');
 
@@ -1627,13 +1637,20 @@
         setSyncStatus('online');
       } else {
         // 第一個開啟這個專案的人：建立空白的第一頁，並推播給雲端
+        isCloudLoaded = true; // 雲端文件不存在也算已知狀態，解除防護
         if (tabsList.length === 0) {
           window.createTab();
         }
       }
+      // 【關鍵】標記雲端資料已成功載入，解除 sync 防護
+      if (!isCloudLoaded) {
+        isCloudLoaded = true;
+        console.log('isCloudLoaded = true，解除 sync 防護。');
+      }
     }, (error) => {
       console.error("Firestore 監聽失敗 (請確認 Rules 是否為允許讀寫):", error);
       setSyncStatus('error');
+      if (!isCloudLoaded) isCloudLoaded = true;
       if (tabsList.length === 0) window.createTab(null, false); // 離線狀態下至少能本機運作
     });
 

@@ -632,6 +632,7 @@
         let syncTimeout = null;
         let lastSyncState = null;
         let hasPendingChanges = false;
+        let isCloudLoaded = false; // 防護旗標：在第一次雲端 snapshot 抵達前，禁止任何 sync 上傳
         const clientId = Math.random().toString(36).substring(2, 15);
         let currentLocks = {};
         let lockThrottlers = {};
@@ -736,6 +737,11 @@
 
         function scheduleSyncToCloud() {
             if (isSyncingFromCloud) return;
+            // 【安全防護】尚未收到第一次雲端資料前，禁止任何上傳，避免空快取電腦把空資料覆蓋雲端
+            if (!isCloudLoaded) {
+                console.warn('scheduleSyncToCloud: 雲端資料尚未載入，跳過此次 sync。');
+                return;
+            }
             hasPendingChanges = true;
             setSyncStatus('syncing');
             clearTimeout(syncTimeout);
@@ -743,14 +749,16 @@
                 try {
                     const currentState = getAppState();
                     if (!lastSyncState) {
-                        await setDoc(docRef, { state: currentState, timestamp: new Date().toISOString() });
+                        // 保守放棄，不覆蓋雲端（isCloudLoaded 已防護正常情況）
+                        console.warn('scheduleSyncToCloud: lastSyncState 為 null，放棄此次 sync。');
+                        hasPendingChanges = false;
+                        setSyncStatus('online');
+                        return;
                     } else {
                         const diff = calculateDiff(lastSyncState, currentState, 'state');
                         if (diff === null) {
                             await setDoc(docRef, { state: currentState, timestamp: new Date().toISOString() });
                         } else if (Object.keys(diff).length > 0) {
-                            // Firebase Update 不能含有嵌套在 Array 裡面的路徑修改，我們如果偵測到任何更改，
-                            // 為了矩形的陣列穩定性，就直接粗暴的把整個 state 給 update 上去，犧牲一點效能換取不閃爍
                             let payload = diff;
                             if (Object.keys(diff).some(k => k.includes('['))) {
                                 payload = { state: currentState };
@@ -1596,11 +1604,18 @@
                 }
                 setSyncStatus('online');
             } else {
+                isCloudLoaded = true; // 雲端文件不存在也算已知狀態，解除防護
                 if (tabsList.length === 0) window.createTab();
+            }
+            // 【關鍵】標記雲端資料已成功載入，解除 sync 防護
+            if (!isCloudLoaded) {
+                isCloudLoaded = true;
+                console.log('isCloudLoaded = true，解除 sync 防護。');
             }
         }, (error) => {
             console.error("Firestore Error:", error);
             setSyncStatus('error');
+            if (!isCloudLoaded) isCloudLoaded = true;
             if (tabsList.length === 0) window.createTab(null, false);
         });
 
