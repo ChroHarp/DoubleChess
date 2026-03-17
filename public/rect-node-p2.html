@@ -609,7 +609,7 @@
         const db = initializeFirestore(app, {
             localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
         });
-        const docRef = doc(db, 'research_data', 'board_state_rect'); // <--- 更改為獨立檔案
+        const docRef = doc(db, 'research_data', 'board_state_rect_p2'); // <--- 更改為獨立檔案
 
         // === 全域變數 ===
         let tabsList = [];
@@ -1234,7 +1234,7 @@
             // Remove existing
             bounds.querySelectorAll('.exp-node').forEach(n => n.remove());
 
-            if (n < 1) return; // Support from Lv_1
+            if (n < 2) return; // Support from Lv_2
             const sourceTabId = `Lv_${n - 1}`;
             const sourceStorage = window.tabDataStorage[sourceTabId];
             if (!sourceStorage || sourceStorage.length === 0) return;
@@ -1246,12 +1246,13 @@
             const sourceN = n - 1; // 疊加層是來自上一層
 
             sourceStorage.forEach(sourceNd => {
-                // 如果疊加層（來源層）是偶數，顯示第二列到最後一列（只有第一列不顯示）
+                // 自LV3開始：
+                // LV2n+1 (目前為奇數n)，疊加顯示 Lv2n (偶數sourceN) 的第一列與最後一列不顯示
+                // LV2n (目前為偶數n)，疊加顯示 Lv2n-1 (奇數sourceN) 的第一列不顯示
                 if (sourceN % 2 === 0) {
-                    if (sourceNd.y === minY) return;
-                } else {
-                    // 原本的規則：奇數層，不顯示第一列與最後一列
                     if (sourceNd.y === minY || sourceNd.y === maxY) return;
+                } else {
+                    if (sourceNd.y === minY) return;
                 }
 
                 const expNode = document.createElement('div');
@@ -1297,9 +1298,12 @@
             bounds.querySelectorAll('.ref-node').forEach(n => n.remove());
             bounds.querySelectorAll('.ref-label').forEach(n => n.remove());
 
-            if (n < 2) return; 
+            if (n < 3) return; 
 
-            const sourceN = n % 2 === 0 ? n - 1 : n - 2;
+            // 自LV3開始：
+            // LV2n+1 (n為奇數)的參照列是 LV2n (n-1)的最後一列
+            // LV2n (n為偶數)的參照列是 LV2n-2 (n-2)的最後一列
+            const sourceN = n % 2 !== 0 ? n - 1 : n - 2;
             const sourceTabId = `Lv_${sourceN}`;
             const sourceStorage = window.tabDataStorage[sourceTabId];
             if (!sourceStorage || sourceStorage.length === 0) return;
@@ -1439,7 +1443,7 @@
             const nMatch = tabId.match(/Lv_(\d+)/);
             const refToggleContainer = document.getElementById('refLayerToggleContainer');
             const refToggleText = document.getElementById('refLayerToggleText');
-            if (nMatch && parseInt(nMatch[1]) >= 1) {
+            if (nMatch && parseInt(nMatch[1]) >= 2) {
                 const n = parseInt(nMatch[1]);
                 refToggleContainer.style.display = 'flex';
                 refToggleText.innerText = `疊加顯示 Lv_${n - 1}`;

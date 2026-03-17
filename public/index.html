@@ -339,6 +339,18 @@
             color: var(--accent-4);
         }
 
+        .column-2 .card-3 {
+            border-left: 3px solid transparent;
+        }
+
+        .column-2 .card-3:hover {
+            border-left-color: var(--accent-2);
+        }
+
+        .column-2 .card-3 .card-arrow {
+            color: var(--accent-2);
+        }
+
         .link-card:hover .card-arrow {
             opacity: 1;
             transform: translateX(0);
@@ -400,7 +412,7 @@
 
     <header>
         <h1 class="title">4元數 推演工具總覽</h1>
-        <p class="subtitle">選擇您的推演模型：方格拓展的遞迴探索、或是矩形邊界中的節點觀測。</p>
+        <p class="subtitle">選擇推演模型：方格拓展的遞迴探索、或是矩形棋盤的節點觀測。</p>
     </header>
 
     <main class="grid-container">
@@ -479,7 +491,7 @@
             <a href="rect-node.html" class="link-card card-1">
                 <span class="card-number">01</span>
                 <div class="card-content">
-                    <div class="card-title">n*m 節點</div>
+                    <div class="card-title">n+1*n 節點</div>
                     <div class="card-desc">動態長寬網格結構紀錄表 (建構中)</div>
                 </div>
                 <svg class="card-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -489,8 +501,21 @@
                 </svg>
             </a>
 
-            <a href="chess.html" class="link-card card-2">
+            <a href="rect-node-p2.html" class="link-card card-2">
                 <span class="card-number">02</span>
+                <div class="card-content">
+                    <div class="card-title">n+2*n 節點</div>
+                    <div class="card-desc">動態長寬網格結構紀錄表 (建構中)</div>
+                </div>
+                <svg class="card-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+            </a>
+
+            <a href="chess.html" class="link-card card-3">
+                <span class="card-number">03</span>
                 <div class="card-content">
                     <div class="card-title">對弈程式</div>
                     <div class="card-desc">矩形棋盤對弈環境</div>
