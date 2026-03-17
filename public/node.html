@@ -1566,7 +1566,7 @@
       const pickers = activeTab.querySelectorAll('.color-picker');
       pickers.forEach(p => p.style.display = 'none');
 
-      html2canvas(activeTab, { backgroundColor: "#ffffff", scale: 2 }).then(canvas => {
+      html2canvas(activeTab, { backgroundColor: null, scale: 2 }).then(canvas => {
         const link = document.createElement('a');
         const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
         link.download = `${tabId}_${dateStr}.png`;
