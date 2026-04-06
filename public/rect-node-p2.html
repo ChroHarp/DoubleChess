@@ -982,8 +982,8 @@
                     nodeEl.classList.remove('matched-node');
                 }
 
-                // 設置絕對位置
-                nodeEl.style.left = `calc(2000px + ${nd.x * NODE_SIZE_X}px)`;
+                // 設置絕對位置 (避免使用 calc，以利 html2canvas 精準截圖)
+                nodeEl.style.left = `${2000 + nd.x * NODE_SIZE_X}px`;
                 nodeEl.style.bottom = `${baseY + nd.y * NODE_SIZE_Y}px`;
             });
 
@@ -1259,7 +1259,7 @@
                 const colorClass = sourceNd.color || 'white';
                 expNode.className = `node exp-node ${colorClass}`;
                 expNode.style.position = 'absolute';
-                expNode.style.left = `calc(2000px + ${sourceNd.x * NODE_SIZE_X}px)`;
+                expNode.style.left = `${2000 + sourceNd.x * NODE_SIZE_X}px`;
                 expNode.style.bottom = `${baseY + sourceNd.y * NODE_SIZE_Y + (NODE_SIZE_Y / 2)}px`;
                 expNode.style.transform = `translate(-50%, -50%) scale(0.85)`;
                 expNode.style.zIndex = '1';
@@ -1327,7 +1327,7 @@
                 refNode.dataset.x = sourceNd.x;
                 refNode.dataset.y = 'ref'; // Mark as ref row
                 refNode.style.position = 'absolute';
-                refNode.style.left = `calc(2000px + ${sourceNd.x * NODE_SIZE_X}px)`;
+                refNode.style.left = `${2000 + sourceNd.x * NODE_SIZE_X}px`;
                 refNode.style.bottom = `${baseY + refRowYOffset * NODE_SIZE_Y}px`;
 
                 const grid = document.createElement('div');
@@ -1353,8 +1353,8 @@
             const label = document.createElement('div');
             label.className = 'ref-label';
             label.innerHTML = `<span>[ 參照自 Lv_${sourceN} 的最後一列 ]</span>`;
-            label.style.left = `calc(2000px + ${centerX * NODE_SIZE_X}px)`;
-            label.style.bottom = `${baseY + refRowYOffset * NODE_SIZE_Y + 130}px`;
+            label.style.left = `${2000 + centerX * NODE_SIZE_X}px`;
+            label.style.bottom = `${baseY + refRowYOffset * NODE_SIZE_Y + 160}px`;
             label.style.transform = `translate(-50%, 0)`;
             bounds.appendChild(label);
         }
@@ -1507,15 +1507,107 @@
         window.exportToImage = function () {
             const activeTabElement = document.querySelector('.tab-content.active');
             if (!activeTabElement) return;
-            // 匯出版面時隱藏所有箭頭按鈕
-            activeTabElement.querySelectorAll('.arrow-btn').forEach(b => b.style.display = 'none');
+
+            const treeContainer = activeTabElement.querySelector('.tree-container');
             const canvasBounds = activeTabElement.querySelector('.canvas-bounds');
-            html2canvas(canvasBounds, { backgroundColor: "#ffffff" }).then(canvas => {
+            if (!treeContainer || !canvasBounds) return;
+
+            // 隱藏不必要的按鈕與控制項
+            activeTabElement.querySelectorAll('.arrow-btn').forEach(b => b.style.display = 'none');
+            activeTabElement.querySelectorAll('.color-picker').forEach(b => b.style.display = 'none');
+
+            // ── 修正 1：移除 tree-container 白色背景 ──
+            const origBg = treeContainer.style.background;
+            treeContainer.style.background = 'transparent';
+
+            // ── 將所有節點的 bottom 定位轉為 top (針對 html2canvas 的 bottom bug) ──
+            const exportFixes = [];
+            canvasBounds.querySelectorAll('.node, .exp-node, .ref-node, .ref-label').forEach(el => {
+                exportFixes.push({
+                    el,
+                    bottom: el.style.bottom,
+                    top: el.style.top,
+                    left: el.style.left
+                });
+
+                // 因為 html2canvas 無法準確處理 bottom + transform 的組合
+                // 所以先換成絕對的 top 配合預設的 transform 即可完美截圖
+                if (el.style.bottom && el.style.bottom !== 'auto') {
+                    el.style.top = el.offsetTop + 'px';
+                    el.style.bottom = 'auto';
+                }
+
+                // 針對特殊的虛線參照列與標籤，既然套件強制發生了位移，我們就反向給予等量偏移來抵銷
+                // 註：exp-node (疊加層) 顯示正常，不可加上此偏移
+                const w = el.offsetWidth;
+                const h = el.offsetHeight;
+                if (el.classList.contains('ref-node')) {
+                    el.style.left = (parseFloat(el.style.left || 0) + w / 2) + 'px';
+                    el.style.top = (parseFloat(el.style.top || 0) + h / 2) + 'px';
+                } else if (el.classList.contains('ref-label')) {
+                    // 標籤原本就沒有發生 Y 軸偏移 bug，所以只補償 X 軸即可
+                    el.style.left = (parseFloat(el.style.left || 0) + w / 2) + 'px';
+                }
+            });
+
+            // ── 修正針對 Html2Canvas 縮放環境下 input 內黑體字下墜且被裁切的 Bug ──
+            const fixInputStyle = document.createElement('style');
+            fixInputStyle.id = '__export_input_fix__';
+            // 使用 flex 取代 padding 進行強位置中，避免 input 高度縮小造成裁切
+            fixInputStyle.textContent = `
+                .ref-node input, .exp-node input {
+                    line-height: normal !important;
+                    height: 24px !important;
+                    padding: 0 !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                }
+            `;
+            document.head.appendChild(fixInputStyle);
+
+            html2canvas(treeContainer, { backgroundColor: null }).then(fullCanvas => {
+                // 掃描像素找出有內容的區域進行裁切
+                const ctx = fullCanvas.getContext('2d');
+                const w = fullCanvas.width, h = fullCanvas.height;
+                const data = ctx.getImageData(0, 0, w, h).data;
+
+                let minY = h, minX = w, maxY = 0, maxX = 0;
+                for (let y = 0; y < h; y++) {
+                    for (let x = 0; x < w; x++) {
+                        if (data[(y * w + x) * 4 + 3] > 0) {
+                            if (y < minY) minY = y;
+                            if (y > maxY) maxY = y;
+                            if (x < minX) minX = x;
+                            if (x > maxX) maxX = x;
+                        }
+                    }
+                }
+
+                const pad = 20;
+                const cropX = Math.max(0, minX - pad);
+                const cropY = Math.max(0, minY - pad);
+                const cropW = Math.min(w, maxX + pad) - cropX;
+                const cropH = Math.min(h, maxY + pad) - cropY;
+
+                const out = document.createElement('canvas');
+                out.width = cropW; out.height = cropH;
+                out.getContext('2d').drawImage(fullCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
                 const link = document.createElement('a');
                 link.download = `${activeTabElement.id}_${Date.now()}.png`;
-                link.href = canvas.toDataURL('image/png');
+                link.href = out.toDataURL('image/png');
                 link.click();
+            }).finally(() => {
+                treeContainer.style.background = origBg;
+                exportFixes.forEach(({ el, bottom, top, left }) => {
+                    el.style.bottom = bottom;
+                    el.style.top = top;
+                    el.style.left = left;
+                });
+                document.getElementById('__export_input_fix__')?.remove();
                 activeTabElement.querySelectorAll('.arrow-btn').forEach(b => b.style.display = '');
+                activeTabElement.querySelectorAll('.color-picker').forEach(b => b.style.display = '');
             });
         };
 

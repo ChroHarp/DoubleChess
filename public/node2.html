@@ -1515,11 +1515,16 @@
             // 匯出版面時隱藏所有箭頭按鈕
             activeTabElement.querySelectorAll('.arrow-btn').forEach(b => b.style.display = 'none');
             const canvasBounds = activeTabElement.querySelector('.canvas-bounds');
-            html2canvas(canvasBounds, { backgroundColor: "#ffffff" }).then(canvas => {
+            const origBg = canvasBounds.style.background;
+            canvasBounds.style.background = 'transparent';
+
+            html2canvas(canvasBounds, { backgroundColor: null }).then(canvas => {
                 const link = document.createElement('a');
                 link.download = `${activeTabElement.id}_${Date.now()}.png`;
                 link.href = canvas.toDataURL('image/png');
                 link.click();
+            }).finally(() => {
+                canvasBounds.style.background = origBg;
                 activeTabElement.querySelectorAll('.arrow-btn').forEach(b => b.style.display = '');
             });
         };
