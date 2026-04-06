@@ -1566,12 +1566,17 @@
       const pickers = activeTab.querySelectorAll('.color-picker');
       pickers.forEach(p => p.style.display = 'none');
 
+      const origBg = activeTab.style.background;
+      activeTab.style.background = 'transparent';
+
       html2canvas(activeTab, { backgroundColor: null, scale: 2 }).then(canvas => {
         const link = document.createElement('a');
         const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
         link.download = `${tabId}_${dateStr}.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
+      }).finally(() => {
+        activeTab.style.background = origBg;
         pickers.forEach(p => p.style.display = '');
       });
     };

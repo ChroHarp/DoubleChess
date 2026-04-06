@@ -507,12 +507,17 @@
             const activeTab = document.getElementById('edge-container');
             if (!activeTab) return;
 
-            html2canvas(activeTab, { backgroundColor: "#ffffff", scale: 2 }).then(canvas => {
+            const origBg = activeTab.style.background;
+            activeTab.style.background = 'transparent';
+
+            html2canvas(activeTab, { backgroundColor: null, scale: 2 }).then(canvas => {
                 const link = document.createElement('a');
                 const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
                 link.download = `Edge_View_${dateStr}.png`;
                 link.href = canvas.toDataURL('image/png');
                 link.click();
+            }).finally(() => {
+                activeTab.style.background = origBg;
             });
         };
 
