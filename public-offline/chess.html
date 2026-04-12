@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>禁手棋 - 矩形棋盤實驗室</title>
+    <script src="./vendor/tailwind.min.js"></script>
+    <style>
+        :root {
+            --rows: 7;
+            --cols: 7;
+        }
+
+        .board-container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 16px;
+            border-radius: 24px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+        }
+
+        .board-grid {
+            display: grid;
+            gap: 4px;
+            background-color: #cbd5e1;
+            padding: 8px;
+            border-radius: 12px;
+            width: 100%;
+            aspect-ratio: var(--cols) / var(--rows);
+            position: relative;
+            transition: aspect-ratio 0.3s ease;
+        }
+
+        .cell {
+            position: relative;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s;
+            background-color: #f8fafc;
+            aspect-ratio: 1 / 1;
+        }
+
+        .cell:hover:not(.not-allowed) {
+            background-color: #eff6ff;
+            transform: scale(0.98);
+        }
+
+        .cell.not-allowed {
+            cursor: not-allowed;
+        }
+
+        .cell-inner {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .piece {
+            width: 80%;
+            height: 80%;
+            border-radius: 50%;
+            transform: scale(0);
+            animation: place 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            z-index: 10;
+        }
+
+        .piece-p1 {
+            background: radial-gradient(circle at 30% 30%, #334155, #020617);
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3);
+        }
+
+        .piece-p2 {
+            background: radial-gradient(circle at 30% 30%, #ffffff, #e2e8f0);
+            border: 1px solid #94a3b8;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
+        @keyframes place {
+            to {
+                transform: scale(1);
+            }
+        }
+
+        .forbidden {
+            color: #ef4444;
+            font-weight: 900;
+            opacity: 0.6;
+            z-index: 5;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .guide-line {
+            position: absolute;
+            pointer-events: none;
+            z-index: 2;
+            transition: all 0.3s ease;
+        }
+
+        .line-h {
+            width: calc(100% - 16px);
+            height: 4px;
+            left: 8px;
+            border-radius: 2px;
+        }
+
+        .line-v {
+            height: calc(100% - 16px);
+            width: 4px;
+            top: 8px;
+            border-radius: 2px;
+        }
+
+        .line-warn {
+            background: rgba(148, 163, 184, 0.35);
+        }
+
+        .line-lock {
+            background: rgba(239, 68, 68, 0.6);
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 min-h-screen flex flex-col items-center p-4 font-sans text-slate-800">
+    <div class="max-w-6xl w-full flex flex-col gap-6">
+
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <!-- 左側：數據與控制 -->
+            <div class="lg:col-span-4 space-y-6 order-2 lg:order-1">
+                <nav class="flex flex-wrap gap-3 text-sm font-bold justify-center lg:justify-start">
+                    <a href="index.html"
+                        class="px-4 py-2 rounded-full bg-slate-200 text-slate-700 hover:bg-slate-300 transition-colors shadow-sm flex items-center gap-2">🏠
+                        首頁</a>
+                    <a href="node.html"
+                        class="px-4 py-2 rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors shadow-sm flex items-center gap-2">⏹
+                        方形節點</a>
+                    <a href="rect-node.html"
+                        class="px-4 py-2 rounded-full bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-colors shadow-sm flex items-center gap-2">🔲
+                        矩形節點</a>
+                </nav>
+
+                <!-- 數據面板 -->
+                <div class="bg-slate-900 rounded-3xl p-6 text-white shadow-2xl relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-4 opacity-10">
+                        <svg width="60" height="60" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M3 3h18v18H3V3zm16 16V5H5v14h14zM7 7h10v2H7V7zm0 4h10v2H7v-2zm0 4h7v2H7v-2z" />
+                        </svg>
+                    </div>
+                    <h2
+                        class="text-xs font-black text-slate-400 uppercase mb-6 tracking-[0.2em] flex items-center gap-2">
+                        <span class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                        節點變化實時監測
+                    </h2>
+                    <div class="flex flex-col gap-3 text-center">
+                        <div class="bg-slate-800/50 rounded-2xl p-4">
+                            <div class="text-[10px] text-slate-400 font-bold mb-3 uppercase tracking-widest">盤面簡化矩陣 Node
+                                Matrix</div>
+                            <div class="flex justify-center items-center my-2">
+                                <span
+                                    class="text-slate-500 text-5xl font-light leading-none border-l-2 border-t-2 border-b-2 border-slate-500 w-3 h-16 rounded-l-sm mr-4"></span>
+                                <div
+                                    class="grid grid-cols-2 gap-x-10 gap-y-3 font-mono text-4xl sm:text-5xl font-black tracking-wider text-center drop-shadow-md">
+                                    <span id="stat-r0"
+                                        class="text-blue-300 drop-shadow-[0_0_8px_rgba(147,197,253,0.5)]">0</span>
+                                    <span id="stat-r1"
+                                        class="text-blue-500 drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]">0</span>
+                                    <span id="stat-c0"
+                                        class="text-indigo-300 drop-shadow-[0_0_8px_rgba(165,180,252,0.5)]">0</span>
+                                    <span id="stat-c1"
+                                        class="text-indigo-500 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]">0</span>
+                                </div>
+                                <span
+                                    class="text-slate-500 text-5xl font-light leading-none border-r-2 border-t-2 border-b-2 border-slate-500 w-3 h-16 rounded-r-sm ml-4"></span>
+                            </div>
+                            <div class="mt-3 text-[10px] text-slate-500 font-bold flex justify-center gap-3">
+                                <span>R0/C0: 空列/空行</span>
+                                <span>R1/C1: 有線列/有線行</span>
+                            </div>
+                        </div>
+                        <div class="bg-slate-800/50 rounded-2xl p-3">
+                            <div class="text-[10px] text-slate-400 font-bold mb-1 uppercase">可用步 S</div>
+                            <div id="stat-s" class="text-3xl font-black text-emerald-400 leading-none">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 控制面板 -->
+                <div class="bg-white rounded-3xl border border-slate-200 p-6 shadow-xl space-y-6">
+                    <div class="space-y-5">
+                        <div class="group">
+                            <div class="flex items-center justify-between mb-3">
+                                <label for="input-m" class="text-sm font-black text-slate-600 flex items-center gap-2">
+                                    <span
+                                        class="w-6 h-6 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center text-xs">M</span>
+                                    棋盤列數
+                                </label>
+                                <span id="m-val"
+                                    class="font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-full text-lg min-w-[3rem] text-center">7</span>
+                            </div>
+                            <input type="range" id="input-m" min="1" max="15" value="7"
+                                class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                        </div>
+
+                        <div class="group">
+                            <div class="flex items-center justify-between mb-3">
+                                <label for="input-n" class="text-sm font-black text-slate-600 flex items-center gap-2">
+                                    <span
+                                        class="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center text-xs">N</span>
+                                    棋盤行數
+                                </label>
+                                <span id="n-val"
+                                    class="font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full text-lg min-w-[3rem] text-center">7</span>
+                            </div>
+                            <input type="range" id="input-n" min="1" max="15" value="7"
+                                class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3 pt-2">
+                        <button id="btn-reset"
+                            class="flex-[2] py-4 bg-slate-900 text-white rounded-2xl font-black text-sm hover:bg-black transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2">
+                            <span>🔄</span> 重新開始
+                        </button>
+                        <button id="btn-undo"
+                            class="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-sm hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 border border-slate-200">
+                            悔棋
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 狀態顯示 -->
+                <div id="status-box"
+                    class="py-5 px-6 rounded-3xl font-black text-center border-2 shadow-xl text-xl transition-all duration-300">
+                    載入中...
+                </div>
+            </div>
+
+            <!-- 右側：棋盤 -->
+            <div class="lg:col-span-8 flex flex-col items-center order-1 lg:order-2">
+                <div class="text-center mb-6">
+                    <h1 class="text-4xl lg:text-5xl font-black text-slate-900 tracking-tight mb-2">「剩」者為王：<span
+                            class="text-blue-600">矩形棋盤系統</span></h1>
+                    <p class="text-slate-500 text-sm font-bold uppercase tracking-widest">交錯禁手模式 · 性質 4 強化實驗</p>
+                </div>
+
+                <div class="board-container">
+                    <div id="board" class="board-grid"></div>
+                </div>
+
+                <!-- 提示訊息 -->
+                <div class="mt-8 p-6 bg-amber-50 rounded-3xl border border-amber-100 w-full max-w-[600px] shadow-sm">
+                    <h3 class="text-amber-900 font-black text-sm mb-2 flex items-center gap-2 uppercase tracking-wider">
+                        <span
+                            class="flex items-center justify-center w-6 h-6 bg-amber-600 text-white rounded-full text-[10px]">!</span>
+                        核心禁手規則：交錯點限制
+                    </h3>
+                    <ul class="text-sm text-amber-800 leading-relaxed font-medium list-disc ml-5 space-y-1">
+                        <li>當一個格子所在的橫線與直線均有棋子時，該交錯點變為<span class="text-red-600 font-bold">禁手格 (✕)</span>。</li>
+                        <li>這意味著你不能下在「既有橫向鄰居、又有縱向鄰居」的空白交會處。</li>
+                        <li>每列/每行最多仍維持兩顆棋子的上限。</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const boardEl = document.getElementById('board');
+        const mInput = document.getElementById('input-m');
+        const nInput = document.getElementById('input-n');
+        const mVal = document.getElementById('m-val');
+        const nVal = document.getElementById('n-val');
+        const statR0 = document.getElementById('stat-r0');
+        const statR1 = document.getElementById('stat-r1');
+        const statC0 = document.getElementById('stat-c0');
+        const statC1 = document.getElementById('stat-c1');
+        const statS = document.getElementById('stat-s');
+        const statusBox = document.getElementById('status-box');
+        const btnReset = document.getElementById('btn-reset');
+        const btnUndo = document.getElementById('btn-undo');
+
+        let rows = 7, cols = 7;
+        let board = [], turn = 1, history = [], gameOver = false;
+
+        function init() {
+            rows = parseInt(mInput.value);
+            cols = parseInt(nInput.value);
+            mVal.textContent = rows;
+            nVal.textContent = cols;
+
+            document.documentElement.style.setProperty('--rows', rows);
+            document.documentElement.style.setProperty('--cols', cols);
+
+            board = Array(rows).fill(0).map(() => Array(cols).fill(0));
+            turn = 1;
+            history = [];
+            gameOver = false;
+            render();
+        }
+
+        function checkStats() {
+            const rowCounts = Array(rows).fill(0);
+            const colCounts = Array(cols).fill(0);
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (board[r][c] > 0) { rowCounts[r]++; colCounts[c]++; }
+                }
+            }
+
+            let legalMoves = 0;
+            const gridStatus = Array(rows).fill(0).map(() => Array(cols).fill(true));
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    // 規則 1: 該格必須為空
+                    // 規則 2: 該列與該行棋子數不可超過 2
+                    // 規則 3: 橫線與直線的交錯處為禁手 (若列有棋且行有棋，則交點禁手)
+                    const isOccupied = board[r][c] > 0;
+                    const rowFull = rowCounts[r] >= 2;
+                    const colFull = colCounts[c] >= 2;
+                    const isIntersection = rowCounts[r] > 0 && colCounts[c] > 0;
+
+                    if (isOccupied || rowFull || colFull || isIntersection) {
+                        gridStatus[r][c] = false;
+                    } else {
+                        legalMoves++;
+                    }
+                }
+            }
+
+            let R0 = rowCounts.filter(v => v === 0).length;
+            let C0 = colCounts.filter(v => v === 0).length;
+            let R1 = rowCounts.filter(v => v === 1).length;
+            let C1 = colCounts.filter(v => v === 1).length;
+
+            if (C1 > R0) C1 = R0;
+            if (R1 > C0) R1 = C0;
+
+            return {
+                rowCounts,
+                colCounts,
+                gridStatus,
+                R0, R1, C0, C1,
+                legalMoves
+            };
+        }
+
+        function render() {
+            const stats = checkStats();
+            boardEl.innerHTML = '';
+
+            boardEl.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+            boardEl.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+
+            statR0.textContent = stats.R0;
+            statR1.textContent = stats.R1;
+            statC0.textContent = stats.C0;
+            statC1.textContent = stats.C1;
+            statS.textContent = stats.legalMoves;
+
+            const rStep = 100 / rows;
+            const cStep = 100 / cols;
+
+            // 繪製格線
+            stats.rowCounts.forEach((count, r) => {
+                if (count > 0) {
+                    const line = document.createElement('div');
+                    line.className = `guide-line line-h ${count >= 2 ? 'line-lock' : 'line-warn'}`;
+                    line.style.top = `${rStep * r + rStep / 2}%`;
+                    boardEl.appendChild(line);
+                }
+            });
+
+            stats.colCounts.forEach((count, c) => {
+                if (count > 0) {
+                    const line = document.createElement('div');
+                    line.className = `guide-line line-v ${count >= 2 ? 'line-lock' : 'line-warn'}`;
+                    line.style.left = `${cStep * c + cStep / 2}%`;
+                    boardEl.appendChild(line);
+                }
+            });
+
+            // 繪製格子
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell shadow-inner';
+
+                    const inner = document.createElement('div');
+                    inner.className = 'cell-inner';
+
+                    if (board[r][c] > 0) {
+                        const p = document.createElement('div');
+                        p.className = `piece piece-p${board[r][c]}`;
+                        inner.appendChild(p);
+                    } else {
+                        const isLegal = stats.gridStatus[r][c];
+                        if (!isLegal) {
+                            // 顯示禁手 ✕
+                            const rowHas = stats.rowCounts[r] > 0;
+                            const colHas = stats.colCounts[c] > 0;
+                            const isIntersection = rowHas && colHas;
+
+                            inner.innerHTML = `<span class="forbidden" style="font-size: ${Math.max(12, 28 - Math.max(rows, cols))}px">✕</span>`;
+                            cell.classList.add('not-allowed');
+                            cell.style.backgroundColor = isIntersection ? '#fee2e2' : '#f1f5f9';
+                        } else {
+                            cell.onclick = () => handleMove(r, c);
+                        }
+                    }
+                    cell.appendChild(inner);
+                    boardEl.appendChild(cell);
+                }
+            }
+
+            // 更新狀態
+            if (stats.legalMoves === 0) {
+                gameOver = true;
+                const winner = turn === 1 ? "白棋 (P2)" : "黑棋 (P1)";
+                statusBox.textContent = `🏆 遊戲結束！${winner} 獲勝`;
+                statusBox.className = "py-5 px-6 rounded-3xl bg-emerald-600 text-white font-black text-center shadow-xl animate-bounce text-xl border-transparent";
+            } else {
+                const player = turn === 1 ? "黑棋 (P1)" : "白棋 (P2)";
+                statusBox.textContent = `輪到：${player}`;
+                if (turn === 1) {
+                    statusBox.className = "py-5 px-6 rounded-3xl bg-slate-900 text-white font-black text-center shadow-xl text-xl border-slate-900";
+                } else {
+                    statusBox.className = "py-5 px-6 rounded-3xl bg-white text-slate-800 font-black text-center shadow-xl text-xl border-slate-200";
+                }
+            }
+
+            btnUndo.disabled = history.length === 0;
+        }
+
+        function handleMove(r, c) {
+            if (gameOver) return;
+            history.push(JSON.stringify({ board, turn }));
+            board[r][c] = turn;
+            turn = turn === 1 ? 2 : 1;
+            render();
+        }
+
+        btnUndo.onclick = () => {
+            if (history.length > 0) {
+                const state = JSON.parse(history.pop());
+                board = state.board;
+                turn = state.turn;
+                gameOver = false;
+                render();
+            }
+        };
+
+        btnReset.onclick = init;
+        mInput.oninput = () => { mVal.textContent = mInput.value; init(); };
+        nInput.oninput = () => { nVal.textContent = nInput.value; init(); };
+
+        window.onload = init;
+    </script>
+</body>
+
+</html>

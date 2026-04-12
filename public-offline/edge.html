@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4元數 Node 紀錄表 - 邊界推演呈現 (Even Levels)</title>
+    <!-- 引入 html2canvas 畫布轉換套件（本地版） -->
+    <script src="./vendor/html2canvas.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        /* 上方控制列與分頁器 */
+        .header-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            z-index: 10;
+        }
+
+        .page-label {
+            font-weight: bold;
+            font-size: 16px;
+            color: #2d3748;
+            margin-right: auto;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            cursor: pointer;
+            border: none;
+            background: #3182ce;
+            color: white;
+            border-radius: 6px;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+
+        .btn.export {
+            background: #38a169;
+        }
+
+        .btn.export:hover {
+            background: #2f855a;
+        }
+
+        /* 同步狀態燈號 */
+        .sync-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: bold;
+            font-size: 14px;
+            color: #4a5568;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: #e2e8f0;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #a0aec0;
+        }
+
+        .status-dot.online {
+            background: #48bb78;
+            box-shadow: 0 0 5px #48bb78;
+        }
+
+        /* 緊密模式切換 */
+        .compact-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: bold;
+            color: #2d3748;
+            cursor: pointer;
+            padding: 6px 12px;
+            background: #edf2f7;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            margin-left: 20px;
+        }
+
+        /* 內容區域 */
+        .tab-contents {
+            flex-grow: 1;
+            overflow: auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            position: relative;
+        }
+
+        /* 樹狀圖結構 */
+        .tree-container {
+            display: flex;
+            /* 重要：反向排列，讓陣列第一筆（Lv_0）在最下面，後續（Lv_2, Lv_4）往上疊 */
+            flex-direction: column-reverse;
+            align-items: center;
+            gap: 80px;
+            margin-top: 20px;
+            padding: 40px;
+            position: relative;
+            background: white;
+            min-width: max-content;
+            min-height: max-content;
+        }
+
+        body.compact-mode .tree-container {
+            gap: 15px !important;
+            padding-top: 15px !important;
+        }
+
+        .tree-row {
+            display: flex;
+            justify-content: center;
+            gap: 45px;
+            position: relative;
+            z-index: 2;
+        }
+
+        body.compact-mode .tree-row {
+            gap: 10px !important;
+        }
+
+        /* 背景箭頭畫布 */
+        .tree-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* Node 樣式 */
+        .node {
+            min-width: 64px;
+            min-height: 64px;
+            display: grid;
+            grid-auto-flow: column;
+            grid-template-rows: auto auto;
+            grid-template-columns: auto auto;
+            gap: 4px;
+            border: 3px solid #718096;
+            padding: 6px;
+            border-radius: 8px;
+            background-color: #ffffff;
+            box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
+            position: relative;
+        }
+
+        .node.green {
+            background-color: #c6f6d5;
+            border-color: #38a169;
+        }
+
+        .node.red {
+            background-color: #fed7d7;
+            border-color: #e53e3e;
+        }
+
+        /* 輸入框樣式 (唯讀靜態) */
+        .node input {
+            width: 3ch;
+            min-width: 3ch;
+            border: 1px solid transparent;
+            text-align: center;
+            font-size: 16px;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            background: transparent;
+            box-sizing: border-box;
+            outline: none;
+            border-radius: 3px;
+            padding: 2px 4px;
+            pointer-events: none;
+            /* 完全不可點擊 */
+        }
+
+        /* 標籤 (Lv_n 標示) */
+        .row-label {
+            position: absolute;
+            left: -80px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-weight: bold;
+            color: #718096;
+            background: #e2e8f0;
+            padding: 4px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header-controls">
+        <span class="page-label">推演邊界呈現 (Extracting Last Rows of Even Levels)</span>
+        <div class="sync-status" id="sync-status">
+            <div class="status-dot" id="status-dot"></div>
+            <span id="status-text">連線載入中...</span>
+        </div>
+
+        <label class="compact-toggle">
+            <input type="checkbox" id="compactModeToggle" onchange="window.toggleCompactMode(event)"> 緊密模式
+        </label>
+
+        <button class="btn export" onclick="window.exportToImage()">🖼️ 匯出當前畫面</button>
+        <button class="btn" style="background:#4a5568;" onclick="window.location.href='index.html'">🏠 回到首頁</button>
+        <button class="btn" style="background:#4a5568;" onclick="window.location.href='node.html'">📄 回到節點編輯</button>
+    </div>
+
+    <div class="tab-contents" id="tab-contents">
+        <div class="tree-container" id="edge-container">
+            <svg class="tree-svg" id="edge-svg">
+                <defs>
+                    <marker id="arrow-edge" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5"
+                        orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#a0aec0" />
+                    </marker>
+                </defs>
+            </svg>
+        </div>
+    </div>
+
+    <!-- 離線展示：載入本地資料與 Firebase shim -->
+    <script src="./vendor/offline-data.js"></script>
+    <script src="./vendor/firebase-local.js"></script>
+    <script>
+        const { initializeApp, getFirestore, doc, onSnapshot, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } = window._FB;
+
+        // 1. Firebase 初始化（離線 shim）
+        const app = initializeApp({});
+        const db = initializeFirestore(app, {});
+        const docRef = doc(db, 'research_data', 'board_state');
+
+        function setSyncStatus(status) {
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+            dot.className = 'status-dot';
+            dot.classList.add('online');
+            text.innerText = '離線展示模式';
+        }
+
+        // 將 Maps 或 Arrays 的 Firebase Payload 正規化為陣列
+        function normalizeToArray(data) {
+            if (!data) return [];
+            if (Array.isArray(data)) return data;
+
+            const keys = Object.keys(data);
+            if (keys.length === 0) return [];
+
+            // 如果 key 是純數字 (例如 r 或 i)，就照數字排序
+            if (!isNaN(parseInt(keys[0]))) {
+                const numericKeys = keys.filter(k => !isNaN(parseInt(k))).sort((a, b) => parseInt(a) - parseInt(b));
+                return numericKeys.map(k => data[k]);
+            }
+            // 如果 key 是文字 (例如 Lv_0)，直接回傳 values 並稍後排序
+            return Object.values(data);
+        }
+
+        // 接收資料並繪製 Edge 視圖
+        function renderEdgeView(rawState) {
+            const container = document.getElementById('edge-container');
+            const svg = document.getElementById('edge-svg');
+
+            // 清除除了 SVG 以外的舊節點
+            Array.from(container.children).forEach(child => {
+                if (child.tagName.toLowerCase() !== 'svg') {
+                    container.removeChild(child);
+                }
+            });
+            // 清空 SVG 內的線條 (保留 defs)
+            const defs = svg.querySelector('defs');
+            svg.innerHTML = '';
+            if (defs) svg.appendChild(defs);
+
+            // 1. 整理各層級的最後一列
+            let edgeRowsData = []; // [{ lvName: 'Lv_0', nodes: [...] }, { lvName: 'Lv_2', nodes: [...] }]
+
+            const tabsArray = normalizeToArray(rawState);
+
+            // 找出所有偶數的 Lv
+            const evenTabs = tabsArray.filter(t => {
+                const match = t.id.match(/Lv_(\d+)/);
+                if (match) {
+                    const n = parseInt(match[1]);
+                    return n % 2 === 0;
+                }
+                return false;
+            }).sort((a, b) => {
+                return parseInt(a.id.match(/Lv_(\d+)/)[1]) - parseInt(b.id.match(/Lv_(\d+)/)[1]);
+            });
+
+            evenTabs.forEach(tab => {
+                const rowsArray = normalizeToArray(tab.rows);
+                if (rowsArray.length > 0) {
+                    // 取得該分頁(Level)的最後一列
+                    const lastRow = rowsArray[rowsArray.length - 1];
+                    edgeRowsData.push({
+                        lvName: tab.id,
+                        nodes: normalizeToArray(lastRow.nodes)
+                    });
+                }
+            });
+
+            // 2. 建立 DOM 元素
+            // 由於 container 採用 column-reverse，我們按照 0, 2, 4 順序 append，Lv_0 會在最下面
+            edgeRowsData.forEach((rowData, index) => {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'tree-row';
+                rowDiv.dataset.r = index; // 這裡的 r 只是代表它是第幾疊
+                rowDiv.dataset.lv = rowData.lvName;
+
+                // 加上側邊標籤
+                const label = document.createElement('div');
+                label.className = 'row-label';
+                label.innerText = rowData.lvName;
+                rowDiv.appendChild(label);
+
+                rowData.nodes.forEach(nodeData => {
+                    const node = document.createElement('div');
+                    node.className = `node ${nodeData.color || 'white'}`;
+                    node.dataset.i = nodeData.i; // 保持原本在該列中的原始索引
+
+                    ['a', 'b', 'c', 'd'].forEach(pos => {
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.value = nodeData.vals ? (nodeData.vals[pos] || '') : '';
+                        input.readOnly = true;
+                        input.style.width = Math.max(3, input.value.length + 1) + 'ch';
+                        node.appendChild(input);
+                    });
+                    rowDiv.appendChild(node);
+                });
+
+                container.appendChild(rowDiv);
+            });
+
+            // 延遲繪製箭頭，確保 DOM 已定位
+            setTimeout(() => {
+                drawEdgeArrows(edgeRowsData);
+            }, 100);
+        }
+
+        function drawEdgeArrows(edgeRowsData) {
+            const container = document.getElementById('edge-container');
+            const svg = document.getElementById('edge-svg');
+
+            // 設定畫布尺寸
+            svg.style.width = container.scrollWidth + 'px';
+            svg.style.height = container.scrollHeight + 'px';
+            const containerRect = container.getBoundingClientRect();
+            const isCompact = document.body.classList.contains('compact-mode');
+
+            // 輔助函式：畫 SVG 線
+            const drawLine = (startX, startY, endX, endY) => {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', startX); line.setAttribute('y1', startY);
+                line.setAttribute('x2', endX); line.setAttribute('y2', endY);
+                line.setAttribute('stroke', '#a0aec0');
+                line.setAttribute('stroke-width', '2');
+                line.setAttribute('marker-end', `url(#arrow-edge)`);
+                svg.appendChild(line);
+            };
+
+            const rows = Array.from(container.querySelectorAll('.tree-row'));
+
+            // 改由最頂層 (DOM裡的最後1個，即索引最大的Lv) 開始往下遍歷，因為箭頭方向是由上往下
+            for (let rIndex = rows.length - 1; rIndex >= 0; rIndex--) {
+                const currentRow = rows[rIndex];
+                const prevRow = rIndex - 1 >= 0 ? rows[rIndex - 1] : null; // 下方的那一列
+
+                const currentNodes = Array.from(currentRow.querySelectorAll('.node'));
+                if (currentNodes.length === 0) continue;
+
+                const currentCenterI = (currentNodes.length - 1) / 2; // 當前列的中軸索引
+
+                currentNodes.forEach((fromNode, domIndex) => {
+                    const rectFrom = fromNode.getBoundingClientRect();
+                    const offsetFromCenter = domIndex - currentCenterI; // 左側(-), 中軸(0), 右側(+)
+                    const offsetGap = isCompact ? 2 : 12;
+
+                    // 1. 中軸節點 (offset == 0)：下、左、右
+                    // 2. 左側節點 (offset < 0)：下、左、右下
+                    // 3. 右側節點 (offset > 0)：下、右、左下
+
+                    // ================= A. 處理橫向箭頭 (同列) =================
+                    if (offsetFromCenter <= 0 && domIndex > 0) {
+                        // 中軸或左側：向左畫 (左)
+                        const leftNode = currentNodes[domIndex - 1];
+                        const rectTo = leftNode.getBoundingClientRect();
+                        const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
+                        const startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
+                        const endX = rectTo.right - containerRect.left + container.scrollLeft;
+                        const endY = rectTo.top + rectTo.height / 2 - containerRect.top + container.scrollTop;
+                        drawLine(startX, startY, endX + offsetGap, endY);
+                    }
+                    if (offsetFromCenter >= 0 && domIndex < currentNodes.length - 1) {
+                        // 中軸或右側：向右畫 (右)
+                        const rightNode = currentNodes[domIndex + 1];
+                        const rectTo = rightNode.getBoundingClientRect();
+                        const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
+                        const startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
+                        const endX = rectTo.left - containerRect.left + container.scrollLeft;
+                        const endY = rectTo.top + rectTo.height / 2 - containerRect.top + container.scrollTop;
+                        drawLine(startX, startY, endX - offsetGap, endY);
+                    }
+
+                    // ================= B. 處理向下的垂直與斜向箭頭 (跨列) =================
+                    if (prevRow) {
+                        const prevNodes = Array.from(prevRow.querySelectorAll('.node'));
+                        if (prevNodes.length === 0) return;
+                        const prevCenterI = (prevNodes.length - 1) / 2; // 下方的中軸索引
+
+                        // 所有人都有「往下」的垂直連線 (下)
+                        const targetDownDomIndex = prevCenterI + offsetFromCenter;
+                        if (targetDownDomIndex >= 0 && targetDownDomIndex < prevNodes.length) {
+                            const downNode = prevNodes[targetDownDomIndex];
+                            const rectTo = downNode.getBoundingClientRect();
+                            const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
+                            const startY = rectFrom.top + rectFrom.height / 2 - containerRect.top + container.scrollTop;
+                            const endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft;
+                            const endY = rectTo.top - containerRect.top + container.scrollTop;
+                            drawLine(startX, startY, endX, endY - 4);
+                        }
+
+                        // 斜向連線
+                        if (offsetFromCenter < 0) {
+                            // 左側節點：往「右下」連線
+                            const targetDiagDomIndex = targetDownDomIndex + 1;
+                            if (targetDiagDomIndex >= 0 && targetDiagDomIndex < prevNodes.length) {
+                                const diagNode = prevNodes[targetDiagDomIndex];
+                                const rectTo = diagNode.getBoundingClientRect();
+                                const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
+                                const startY = rectFrom.bottom - containerRect.top + container.scrollTop;
+                                const endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft - (isCompact ? 8 : 12);
+                                const endY = rectTo.top - containerRect.top + container.scrollTop;
+                                drawLine(startX, startY, endX, endY - 4);
+                            }
+                        } else if (offsetFromCenter > 0) {
+                            // 右側節點：往「左下」連線
+                            const targetDiagDomIndex = targetDownDomIndex - 1;
+                            if (targetDiagDomIndex >= 0 && targetDiagDomIndex < prevNodes.length) {
+                                const diagNode = prevNodes[targetDiagDomIndex];
+                                const rectTo = diagNode.getBoundingClientRect();
+                                const startX = rectFrom.left + rectFrom.width / 2 - containerRect.left + container.scrollLeft;
+                                const startY = rectFrom.bottom - containerRect.top + container.scrollTop;
+                                const endX = rectTo.left + rectTo.width / 2 - containerRect.left + container.scrollLeft + (isCompact ? 8 : 12);
+                                const endY = rectTo.top - containerRect.top + container.scrollTop;
+                                drawLine(startX, startY, endX, endY - 4);
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // ================= 全局視窗事件 =================
+        window.addEventListener('resize', () => {
+            // 簡單重繪
+            const currentRawState = window.__lastRawState;
+            if (currentRawState) renderEdgeView(currentRawState);
+        });
+
+        window.toggleCompactMode = function (e) {
+            if (e.target.checked) document.body.classList.add('compact-mode');
+            else document.body.classList.remove('compact-mode');
+
+            const currentRawState = window.__lastRawState;
+            if (currentRawState) renderEdgeView(currentRawState);
+        };
+
+        window.exportToImage = function () {
+            const activeTab = document.getElementById('edge-container');
+            if (!activeTab) return;
+
+            const origBg = activeTab.style.background;
+            activeTab.style.background = 'transparent';
+
+            html2canvas(activeTab, { backgroundColor: null, scale: 2 }).then(canvas => {
+                const link = document.createElement('a');
+                const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+                link.download = `Edge_View_${dateStr}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            }).finally(() => {
+                activeTab.style.background = origBg;
+            });
+        };
+
+        // ================= 綁定雲端即時載入 =================
+        onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists() && docSnap.data().state) {
+                window.__lastRawState = docSnap.data().state;
+                renderEdgeView(docSnap.data().state);
+                setSyncStatus('online');
+            }
+        }, (error) => {
+            console.error("Firestore 監聽失敗", error);
+            setSyncStatus('error');
+        });
+
+    </script>
+</body>
+
+</html>

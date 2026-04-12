@@ -1,0 +1,66 @@
+/* Offline fonts — Noto Sans TC */
+@font-face {
+  font-family: 'Noto Sans TC';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('./noto-sans-tc/NotoSansTC-300.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Noto Sans TC';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./noto-sans-tc/NotoSansTC-400.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Noto Sans TC';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./noto-sans-tc/NotoSansTC-500.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Noto Sans TC';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./noto-sans-tc/NotoSansTC-700.ttf') format('truetype');
+}
+
+/* Offline fonts — Outfit */
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('./outfit/Outfit-300.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./outfit/Outfit-400.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./outfit/Outfit-500.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./outfit/Outfit-600.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./outfit/Outfit-700.ttf') format('truetype');
+}

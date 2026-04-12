@@ -1,0 +1,1656 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4元數 矩形紀錄表 - 雲端共編版</title>
+    <!-- 引入 html2canvas 畫布轉換套件 -->
+    <script src="./vendor/html2canvas.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden;
+            /* 控制捲軸交給內部容器 */
+        }
+
+        /* 上方控制列與分頁器 */
+        .header-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            z-index: 10;
+        }
+
+        .pagination {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: #edf2f7;
+            padding: 4px 12px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e0;
+            flex-grow: 1;
+            justify-content: center;
+        }
+
+        .page-btn {
+            cursor: pointer;
+            border: none;
+            background: #cbd5e0;
+            border-radius: 4px;
+            padding: 6px 16px;
+            font-weight: bold;
+            font-size: 14px;
+            color: #2d3748;
+            transition: 0.2s;
+        }
+
+        .page-btn:hover:not(:disabled) {
+            background: #a0aec0;
+        }
+
+        .page-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .page-label {
+            font-weight: bold;
+            font-size: 16px;
+            color: #2d3748;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            cursor: pointer;
+            border: none;
+            background: #3182ce;
+            color: white;
+            border-radius: 6px;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+
+        .btn:hover {
+            background: #2b6cb0;
+        }
+
+        .btn.export {
+            background: #38a169;
+        }
+
+        .btn.export:hover {
+            background: #2f855a;
+        }
+
+        .btn.save {
+            background: #d69e2e;
+        }
+
+        .btn.save:hover {
+            background: #b7791f;
+        }
+
+        .btn.load {
+            background: #805ad5;
+        }
+
+        .btn.load:hover {
+            background: #6b46c1;
+        }
+
+        .btn.undo {
+            background: #e53e3e;
+        }
+
+        .btn.undo:hover {
+            background: #c53030;
+        }
+
+        /* 同步狀態燈號 */
+        .sync-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: bold;
+            font-size: 14px;
+            color: #4a5568;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: #e2e8f0;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #a0aec0;
+        }
+
+        .status-dot.online {
+            background: #48bb78;
+            box-shadow: 0 0 5px #48bb78;
+        }
+
+        .status-dot.syncing {
+            background: #ecc94b;
+            box-shadow: 0 0 5px #ecc94b;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        /* 內容區域 */
+        .tab-contents {
+            flex-grow: 1;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tab-content {
+            display: none;
+            flex-grow: 1;
+            height: 100%;
+            position: relative;
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 控制參照層顯示/隱藏 */
+        .hide-ref-layer .exp-node {
+            display: none !important;
+        }
+
+        .ref-layer-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: bold;
+            color: #2d3748;
+            cursor: pointer;
+            padding: 6px 12px;
+            background: #edf2f7;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            margin-left: auto;
+        }
+
+        /* 鎖定相關 UI 樣式 */
+        .locked-banner {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            border-radius: 6px;
+            margin: 15px;
+            border: 1px solid #fc8181;
+            font-size: 15px;
+            flex-shrink: 0;
+        }
+
+        .tab-content.locked .node {
+            border-color: #cbd5e0 !important;
+            background: #f7fafc !important;
+            pointer-events: none;
+        }
+
+        .tab-content.locked input,
+        .tab-content.locked button {
+            cursor: not-allowed !important;
+            opacity: 0.6;
+        }
+
+        /* 無限滾動的坐標畫布 */
+        .tree-container {
+            flex-grow: 1;
+            position: relative;
+            background: white;
+            overflow: auto;
+            /* 讓內部畫布可以捲動 */
+            display: block;
+            /* 取消 flex */
+            padding: 40px;
+        }
+
+        /* 確保畫布有足夠的內空間滾動 (隨節點擴展動態伸展) */
+        .canvas-bounds {
+            position: relative;
+            width: 4000px;
+            height: 4000px;
+            transform-origin: center center;
+        }
+
+        /* 背景箭頭畫布 */
+        .tree-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* 節點樣式 (絕對定位) */
+        .node {
+            position: absolute;
+            min-width: 64px;
+            min-height: 64px;
+            display: flex;
+            /* Fix for grid inputs jumping */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border: 3px solid #718096;
+            padding: 6px;
+            border-radius: 8px;
+            background-color: #ffffff;
+            box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
+            z-index: 2;
+            transition: border-color 0.2s, background-color 0.2s;
+            transform: translate(-50%, -50%);
+            /* 修正基準點到中心點 */
+        }
+
+        .node-grid {
+            display: grid;
+            grid-auto-flow: column;
+            grid-template-rows: auto auto;
+            grid-template-columns: auto auto;
+            gap: 4px;
+        }
+
+        .node.green {
+            background-color: #c6f6d5;
+            border-color: #38a169;
+        }
+
+        .node.red {
+            background-color: #fed7d7;
+            border-color: #e53e3e;
+        }
+
+        .node.matched-node {
+            border: 3px solid #d69e2e !important;
+            box-shadow: 0 0 0 3px #d69e2e, 0 0 12px 3px rgba(214, 158, 46, 0.6);
+        }
+
+        .ref-label {
+            position: absolute;
+            color: #718096;
+            font-weight: bold;
+            font-size: 14px;
+            background: white;
+            padding: 5px 10px;
+            border-radius: 6px;
+            white-space: nowrap;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 15px;
+            z-index: 10;
+            transform: translate(-50%, -50%);
+            border: 1px dashed #cbd5e0;
+        }
+
+        .ref-node {
+            cursor: not-allowed !important;
+            transform: translate(-50%, -50%) scale(0.95) !important;
+            opacity: 0.8;
+            border-style: dashed !important;
+        }
+
+        .ref-node input {
+            cursor: not-allowed;
+            pointer-events: none;
+            background: rgba(255, 255, 255, 0.3) !important;
+            border-color: transparent !important;
+        }
+
+        /* ===== 節點互動生成箭頭 (Hover) ===== */
+        .arrow-btn {
+            position: absolute;
+            display: none;
+            width: 24px;
+            height: 24px;
+            background: #4299e1;
+            color: white;
+            border-radius: 50%;
+            border: 2px solid white;
+            font-weight: bold;
+            font-size: 16px;
+            line-height: 20px;
+            text-align: center;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            z-index: 10;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        .arrow-btn:hover {
+            background: #2b6cb0;
+            transform: scale(1.1);
+        }
+
+        .arrow-up {
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .arrow-up:hover {
+            transform: translateX(-50%) scale(1.1);
+        }
+
+        .arrow-left {
+            left: -12px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .arrow-left:hover {
+            transform: translateY(-50%) scale(1.1);
+        }
+
+        .arrow-right {
+            right: -12px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .arrow-right:hover {
+            transform: translateY(-50%) scale(1.1);
+        }
+
+        /* 只在節點 Hover 時且未鎖定的情況下顯示箭頭 */
+        .tab-content:not(.locked) .node:hover .arrow-btn {
+            display: block;
+        }
+
+        .node:hover .arrow-btn.disabled {
+            display: none !important;
+            /* 如果該方向被規則阻擋，則永久隱藏 */
+        }
+
+        /* O / X 選擇器 (移至下方) */
+        .node .color-picker {
+            position: absolute;
+            bottom: -38px;
+            /* 移到下方 */
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            gap: 6px;
+            background: #ffffff;
+            padding: 5px;
+            border-radius: 6px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            border: 1px solid #cbd5e0;
+            z-index: 100;
+        }
+
+        .tab-content:not(.locked) .node:hover .color-picker {
+            display: flex;
+        }
+
+        .btn-color {
+            width: 26px;
+            height: 26px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .btn-color.btn-green {
+            background: #38a169;
+        }
+
+        .btn-color.btn-red {
+            background: #e53e3e;
+        }
+
+        .btn-color:hover {
+            filter: brightness(1.1);
+        }
+
+        /* 輸入框樣式 */
+        .node input {
+            width: 3ch;
+            min-width: 3ch;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+            font-size: 16px;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            background: rgba(255, 255, 255, 0.6);
+            box-sizing: border-box;
+            outline: none;
+            border-radius: 3px;
+            padding: 2px 4px;
+            transition: border 0.1s;
+        }
+
+        .node input:focus {
+            border: 2px solid #3182ce;
+            background: #fff;
+        }
+
+        /* Modal 樣式 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: #fff;
+            padding: 30px 40px;
+            border-radius: 12px;
+            width: 80%;
+            max-width: 800px;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            position: relative;
+            line-height: 1.6;
+            color: #2d3748;
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 20px;
+            right: 25px;
+            font-size: 28px;
+            font-weight: bold;
+            color: #a0aec0;
+            cursor: pointer;
+            transition: color 0.2s;
+            line-height: 1;
+        }
+
+        .close-btn:hover {
+            color: #e53e3e;
+        }
+
+        /* 其他輔助樣式 */
+        .btn.help {
+            background: #ed8936;
+        }
+
+        .btn.help:hover {
+            background: #dd6b20;
+        }
+    </style>
+</head>
+
+<body class="hide-ref-layer">
+
+    <div class="header-controls">
+        <button class="btn" onclick="window.createTab()">+ 新增 Lv 分頁</button>
+        <div class="pagination">
+            <button class="page-btn" id="prev-btn" onclick="window.prevTab()" disabled>◀ 上一頁</button>
+            <span class="page-label" id="current-tab-label">載入中...</span>
+            <button class="page-btn" id="next-btn" onclick="window.nextTab()" disabled>下一頁 ▶</button>
+        </div>
+        <button class="btn undo" onclick="window.openDeleteModal()" style="margin-left: 10px;">🗑️ 刪除目前分頁</button>
+        <a href="index.html" class="btn" style="text-decoration: none; margin-left: auto;">🏠 回到首頁</a>
+
+        <div class="sync-status" id="sync-status">
+            <div class="status-dot" id="status-dot"></div>
+            <span id="status-text">連線中...</span>
+        </div>
+
+        <label class="ref-layer-toggle" id="refLayerToggleContainer" style="display: none;">
+            <input type="checkbox" id="refLayerToggleCheckbox" onchange="window.toggleRefLayer(event)">
+            <span id="refLayerToggleText">顯示上層</span>
+        </label>
+
+        <button class="btn help" onclick="document.getElementById('helpModal').style.display='flex'">📖 操作手冊</button>
+        <button class="btn export" onclick="window.exportToImage()">🖼️ 匯出當前畫面</button>
+        <button class="btn save" onclick="window.saveData()">💾 備份 (JSON)</button>
+        <button class="btn load" onclick="document.getElementById('fileInput').click()">📂 匯入覆蓋</button>
+        <input type="file" id="fileInput" accept=".json" onchange="window.loadData(event)">
+    </div>
+
+    <div class="tab-contents" id="tab-contents"></div>
+
+    <!-- 操作手冊 Modal (待更新文案) -->
+    <div id="helpModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="document.getElementById('helpModal').style.display='none'">&times;</span>
+            <h1>🎯 矩形 Node 紀錄表 - 學生操作手冊</h1>
+            <p>這是矩陣與節點數值推演的自由擴平版，擁有二維坐標特性！</p>
+            <ul>
+                <li><strong>無限畫布：</strong> 起始從原點 (0,0) 開始，請將滑鼠懸停在節點上，點擊上下左右出現的「+」箭頭來動態衍生相鄰節點。</li>
+                <li><strong>生成規則限制：</strong>
+                    <ul>
+                        <li>中軸節點 (x0) 可以往 上、左、右 生成。</li>
+                        <li>往左延伸的分支，只能繼續往左延伸。</li>
+                        <li>往右延伸的分支，只能繼續往右延伸。</li>
+                        <li>不能覆蓋已經存在的節點位置！</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 刪除分頁確認 Modal -->
+    <div id="deleteModal" class="modal">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <span class="close-btn" onclick="document.getElementById('deleteModal').style.display='none'">&times;</span>
+            <h2 style="color: #e53e3e; margin-top: 0;">⚠️ 警告：永久刪除</h2>
+            <p>即將刪除分頁的資料將無法復原，並會同步清除雲端紀錄。</p>
+            <p style="font-size: 1.2em; font-weight: bold; margin: 15px 0;" id="deleteTargetName">Lv_?</p>
+            <p style="margin-bottom: 10px; font-size: 14px; color: #4a5568;">請在下方輸入 <strong
+                    style="color: #e53e3e;">DELETE</strong> 以確認：</p>
+            <input type="text" id="deleteConfirmInput"
+                style="padding: 8px; width: 80%; font-size: 16px; text-align: center; margin-bottom: 20px; border: 2px solid #cbd5e0; border-radius: 6px;"
+                oninput="window.checkDeleteConfirm(this.value)" autocomplete="off">
+            <br>
+            <button class="btn undo" id="confirmDeleteBtn" onclick="window.confirmDeleteTab()" disabled
+                style="width: 80%; padding: 10px; font-size: 16px; opacity: 0.5; cursor: not-allowed;">🗑️ 確認刪除</button>
+        </div>
+    </div>
+
+    <!-- 離線展示：載入本地資料與 Firebase shim -->
+    <script src="./vendor/offline-data.js"></script>
+    <script src="./vendor/firebase-local.js"></script>
+    <script>
+        const { initializeApp, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, setDoc, updateDoc, deleteField, onSnapshot, getDoc } = window._FB;
+
+        // 1. Firebase 初始化（離線 shim）
+        const app = initializeApp({});
+        const db = initializeFirestore(app, {});
+        const docRef = doc(db, 'research_data', 'board_state_rect');
+
+        // === 全域變數 ===
+        let tabsList = [];
+        let currentIndex = 0;
+
+        // state 物件存放 Tab 資料: state["Lv_0"] = [{id:"root", x:0, y:0, type:"center", parentId:null, ...}]
+        const NODE_SIZE_X = 120; // 節點佈局間隔 X
+        const NODE_SIZE_Y = 160; // 節點佈局間隔 Y
+
+        let isSyncingFromCloud = false;
+        let syncTimeout = null;
+        let lastSyncState = null;
+        let hasPendingChanges = false;
+        let isCloudLoaded = true; // 離線模式：直接解除防護
+        const clientId = Math.random().toString(36).substring(2, 15);
+        let currentLocks = {};
+        let lockThrottlers = {};
+
+        // 離線展示模式
+        function setSyncStatus(status) {
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+            dot.className = 'status-dot';
+            dot.classList.add('online');
+            text.innerText = '離線展示模式';
+        }
+
+        window.acquireOrExtendLock = function (tabId) { return true; };
+        function updateLockUI() {}
+
+        // === 核心: Get State (抓取記憶體中的 Node 資料) ===
+        function getAppState() {
+            const data = {};
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                const tabId = tab.id;
+                data[tabId] = window.tabDataStorage ? window.tabDataStorage[tabId] || [] : [];
+            });
+            return data;
+        }
+
+        function calculateDiff(oldObj, newObj, prefix = 'state') {
+            const diff = {};
+            if (oldObj === null || oldObj === undefined) return null;
+            function compare(oldVal, newVal, currentPrefix) {
+                if (oldVal === newVal) return;
+
+                // 防止 Firebase 陣列 deep-diff 造成奇怪的鎖死閃動，若同為 Array 直接判斷取代
+                if (Array.isArray(oldVal) && Array.isArray(newVal)) {
+                    if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+                        diff[currentPrefix] = newVal;
+                    }
+                    return;
+                }
+
+                if (newVal === null || newVal === undefined || typeof newVal !== 'object') {
+                    diff[currentPrefix] = newVal; return;
+                }
+                if (oldVal === null || typeof oldVal !== 'object') {
+                    diff[currentPrefix] = newVal; return;
+                }
+                const keys = new Set([...Object.keys(oldVal), ...Object.keys(newVal)]);
+                for (const key of keys) {
+                    if (!(key in oldVal)) diff[`${currentPrefix}.${key}`] = newVal[key];
+                    else if (!(key in newVal)) diff[`${currentPrefix}.${key}`] = deleteField();
+                    else compare(oldVal[key], newVal[key], `${currentPrefix}.${key}`);
+                }
+            }
+            compare(oldObj, newObj, prefix);
+            return diff;
+        }
+
+        function scheduleSyncToCloud() {
+            if (isSyncingFromCloud) return;
+            // 【安全防護】尚未收到第一次雲端資料前，禁止任何上傳，避免頁面剛載入時把空資料覆蓋雲端
+            if (!isCloudLoaded) {
+                console.warn('scheduleSyncToCloud: 雲端資料尚未載入，跳過此次 sync。');
+                return;
+            }
+            hasPendingChanges = true;
+            setSyncStatus('syncing');
+            clearTimeout(syncTimeout);
+            syncTimeout = setTimeout(async () => {
+                try {
+                    const currentState = getAppState();
+                    if (!lastSyncState) {
+                        // 雲端資料已確認載入完成，但 lastSyncState 為 null
+                        // 這代表這是一份全新的文件，我們需要用 setDoc 建立初始結構
+                        await setDoc(docRef, { state: currentState, timestamp: new Date().toISOString() });
+                    } else {
+                        const diff = calculateDiff(lastSyncState, currentState, 'state');
+                        if (diff === null) {
+                            await setDoc(docRef, { state: currentState, timestamp: new Date().toISOString() });
+                        } else if (Object.keys(diff).length > 0) {
+                            // Firebase Update 不能含有嵌套在 Array 裡面的路徑修改，我們如果偵測到任何更改，
+                            // 為了矩形的陣列穩定性，就直接粗暴的把整個 state 給 update 上去，犧牲一點效能換取不閃爍
+                            let payload = diff;
+                            if (Object.keys(diff).some(k => k.includes('['))) {
+                                payload = { state: currentState };
+                            }
+                            payload['timestamp'] = new Date().toISOString();
+                            await updateDoc(docRef, payload);
+                        }
+                    }
+                    lastSyncState = JSON.parse(JSON.stringify(currentState));
+                    setSyncStatus('online');
+                } catch (error) {
+                    console.error("Firebase Sync Failed:", error);
+                    setSyncStatus('error');
+                } finally {
+                    hasPendingChanges = false;
+                }
+            }, 600);
+        }
+
+        // === 核心: Apply UI (將雲端陣列轉換為 DOM) ===
+        window.tabDataStorage = {}; // 全局紀錄分頁中的 Nodes Array
+
+        function applyDataToUI(data) {
+            if (!data) return;
+            lastSyncState = JSON.parse(JSON.stringify(data));
+            isSyncingFromCloud = true;
+
+            // 1. 同步 Tab
+            Object.keys(data).forEach(tabId => {
+                if (!tabsList.includes(tabId)) {
+                    window.createTab(tabId, false);
+                }
+                window.tabDataStorage[tabId] = data[tabId] || [];
+                renderCanvas(tabId); // 重繪該 Tab 的 DOM
+            });
+
+            // 檢查是否需要刪除本機多餘的 Tab
+            const cloudedTabIds = Object.keys(data);
+            tabsList.forEach(existingTabId => {
+                if (!cloudedTabIds.includes(existingTabId)) {
+                    const tabContent = document.getElementById(existingTabId);
+                    if (tabContent) tabContent.remove();
+                    tabsList = tabsList.filter(id => id !== existingTabId);
+                }
+            });
+
+            if (tabsList.length > 0 && document.querySelectorAll('.tab-content.active').length === 0) {
+                window.switchTab(0);
+            } else if (currentIndex >= tabsList.length && tabsList.length > 0) {
+                window.switchTab(tabsList.length - 1);
+            }
+
+            isSyncingFromCloud = false;
+        }
+
+        // === 新版畫布繪製系統 ===
+
+        function renderCanvas(tabId) {
+            const container = document.getElementById(`tree-${tabId}`);
+            if (!container) return;
+
+            const bounds = container.querySelector('.canvas-bounds');
+            const nodesData = window.tabDataStorage[tabId] || [];
+
+            // 移除動態伸展，採用 4000x4000 的大畫布固定坐標，避免飄動
+
+            // 計算中心基準點 (讓 X=0 固定在畫布中間 2000px)
+            const baseY = 2000;
+
+            // === DOM 複用與更新機制 ===
+            // 先標記所有已存在的 Node 為未觸摸
+            const existingDoms = {};
+            bounds.querySelectorAll('.node').forEach(el => {
+                existingDoms[el.dataset.id] = el;
+            });
+
+            const activeElement = document.activeElement; // 保存當前 focus
+
+            nodesData.forEach(nd => {
+                let nodeEl = existingDoms[nd.id];
+
+                if (!nodeEl) {
+                    // 建立新節點
+                    nodeEl = document.createElement('div');
+                    nodeEl.className = `node ${nd.color || 'white'}`;
+                    nodeEl.dataset.id = nd.id;
+                    nodeEl.dataset.x = nd.x;
+                    nodeEl.dataset.y = nd.y;
+                    nodeEl.dataset.type = nd.type; // center, left, right
+
+                    // 添加 O/X Picker
+                    const picker = document.createElement('div');
+                    picker.className = 'color-picker';
+                    picker.innerHTML = `
+            <button class="btn-color btn-green" onclick="window.setNodeColor(event, '${nd.id}', 'green', '${tabId}')">O</button>
+            <button class="btn-color btn-red" onclick="window.setNodeColor(event, '${nd.id}', 'red', '${tabId}')">X</button>
+          `;
+                    nodeEl.appendChild(picker);
+
+                    // 新增輸入框 Grid
+                    const grid = document.createElement('div');
+                    grid.className = 'node-grid';
+                    ['a', 'b', 'c', 'd'].forEach(pos => {
+                        const input = document.createElement('input');
+                        input.type = 'text'; input.dataset.pos = pos;
+                        input.onfocus = () => { if (!window.acquireOrExtendLock(tabId)) input.blur(); };
+                        input.oninput = () => {
+                            if (!window.acquireOrExtendLock(tabId)) return;
+                            input.style.width = Math.max(3, input.value.length + 1) + 'ch';
+
+                            // 尋找陣列中的物件並更新
+                            const targetNd = window.tabDataStorage[tabId].find(n => n.id === nd.id);
+                            if (targetNd) {
+                                targetNd.vals[pos] = input.value;
+
+                                // 即時比對快取
+                                const vStr = `${targetNd.vals.a || ''},${targetNd.vals.b || ''},${targetNd.vals.c || ''},${targetNd.vals.d || ''}`;
+                                if (vStr !== ',,,' && window.cachedNodeValues && window.cachedNodeValues.has(vStr)) {
+                                    nodeEl.classList.add('matched-node');
+                                    const matchData = window.cachedNodeValues.get(vStr);
+                                    if (matchData && matchData.color && matchData.color !== 'white') {
+                                        targetNd.color = matchData.color; // update data model
+                                        nodeEl.className = `node ${matchData.color}`;
+                                        nodeEl.classList.add('matched-node');
+                                    }
+                                } else {
+                                    nodeEl.classList.remove('matched-node');
+                                }
+                            }
+
+                            // 移除對稱節點自動同步功能
+                            // syncSymmetricNode(input, nd.id, tabId);
+                            scheduleSyncToCloud();
+                        };
+                        // input.onkeydown = // TODO 方位跳轉邏輯
+                        grid.appendChild(input);
+                    });
+                    nodeEl.appendChild(grid);
+
+                    // 產生 Hover Arrows
+                    const createArrow = (dir, text) => {
+                        const arrow = document.createElement('div');
+                        arrow.className = `arrow-btn arrow-${dir}`;
+                        arrow.innerText = text;
+                        arrow.onclick = (e) => { e.stopPropagation(); window.spawnNode(nd.id, dir, tabId); };
+
+                        // 套用嚴格生成規則：
+                        if (nd.type === 'left' && dir !== 'left') arrow.classList.add('disabled');
+                        if (nd.type === 'right' && dir !== 'right') arrow.classList.add('disabled');
+
+                        // 檢查該座標是否已經被佔用
+                        let tx = nd.x, ty = nd.y;
+                        if (dir === 'up') ty += 1;
+                        if (dir === 'left') tx -= 1;
+                        if (dir === 'right') tx += 1;
+                        if (window.tabDataStorage[tabId].some(n => n.x === tx && n.y === ty)) {
+                            arrow.classList.add('disabled'); // 目標有節點阻擋，隱藏箭頭
+                        }
+
+                        nodeEl.appendChild(arrow);
+                    };
+                    createArrow('up', '+');
+                    createArrow('left', '+');
+                    createArrow('right', '+');
+
+                    bounds.appendChild(nodeEl);
+                } else {
+                    // 從 existing 移除，代表已經被處理
+                    delete existingDoms[nd.id];
+
+                    // 更新 DOM 狀態
+                    if (!nodeEl.classList.contains(nd.color)) {
+                        nodeEl.className = `node ${nd.color || 'white'}`;
+                    }
+
+                    // 更新箭頭的顯示狀態 (可能因為臨近節點產生而被組擋)
+                    const upArrow = nodeEl.querySelector('.arrow-up');
+                    const leftArrow = nodeEl.querySelector('.arrow-left');
+                    const rightArrow = nodeEl.querySelector('.arrow-right');
+                    const hasUp = window.tabDataStorage[tabId].some(n => n.x === nd.x && n.y === nd.y + 1);
+                    const hasLeft = window.tabDataStorage[tabId].some(n => n.x === nd.x - 1 && n.y === nd.y);
+                    const hasRight = window.tabDataStorage[tabId].some(n => n.x === nd.x + 1 && n.y === nd.y);
+
+                    if (nd.type === 'center') {
+                        upArrow.classList.toggle('disabled', hasUp);
+                        leftArrow.classList.toggle('disabled', hasLeft);
+                        rightArrow.classList.toggle('disabled', hasRight);
+                    } else if (nd.type === 'left') {
+                        upArrow.classList.add('disabled');
+                        rightArrow.classList.add('disabled');
+                        leftArrow.classList.toggle('disabled', hasLeft);
+                    } else if (nd.type === 'right') {
+                        upArrow.classList.add('disabled');
+                        leftArrow.classList.add('disabled');
+                        rightArrow.classList.toggle('disabled', hasRight);
+                    }
+                }
+
+                // --- 無視新舊，強制同步 Value 除非被聚焦 ---
+                ['a', 'b', 'c', 'd'].forEach(pos => {
+                    const input = nodeEl.querySelector(`input[data-pos="${pos}"]`);
+                    if (input && input !== activeElement) {
+                        const v = nd.vals[pos] || '';
+                        if (input.value !== v) {
+                            input.value = v;
+                            input.style.width = Math.max(3, v.length + 1) + 'ch';
+                        }
+                    }
+                });
+
+                // Check for matched node in cache
+                const vStr = `${nd.vals.a || ''},${nd.vals.b || ''},${nd.vals.c || ''},${nd.vals.d || ''}`;
+                if (vStr !== ',,,' && window.cachedNodeValues && window.cachedNodeValues.has(vStr)) {
+                    nodeEl.classList.add('matched-node');
+                    const matchData = window.cachedNodeValues.get(vStr);
+                    if (matchData && matchData.color && matchData.color !== 'white') {
+                        if (nd.color !== matchData.color) {
+                            nd.color = matchData.color; // Sync color to storage model
+                            
+                            // Reapply node class with new color
+                            nodeEl.className = `node ${nd.color}`;
+                            nodeEl.classList.add('matched-node');
+                            
+                            if (activeElement && nodeEl.contains(activeElement)) {
+                                nodeEl.classList.add('focused');
+                            }
+                        }
+                    }
+                } else {
+                    nodeEl.classList.remove('matched-node');
+                }
+
+                // 設置絕對位置 (避免使用 calc，以利 html2canvas 精準截圖)
+                nodeEl.style.left = `${2000 + nd.x * NODE_SIZE_X}px`;
+                nodeEl.style.bottom = `${baseY + nd.y * NODE_SIZE_Y}px`;
+            });
+
+            // 移除在資料庫中消失的 Nodes
+            Object.keys(existingDoms).forEach(id => {
+                existingDoms[id].remove();
+            });
+
+            drawReferenceNodes(tabId);
+            drawArrowsSVG(tabId);
+            drawExperimentalNodes(tabId);
+
+            // 以下這段自動置中跟隨最新節點的邏輯會導致輸入或新增節點時畫面跳動，因此註解掉
+            /*
+            setTimeout(() => {
+                const container = document.getElementById(`tree-${tabId}`);
+                if (container) {
+                    let maxY = 0;
+                    (window.tabDataStorage[tabId] || []).forEach(nd => { if (nd.y > maxY) maxY = nd.y; });
+                    container.scrollLeft = 2000 - (container.clientWidth / 2);
+                    
+                    // 新增了 Reference Row，所以畫面需要往上移 (Y值更大) 來讓最新節點居中偏下
+                    // 現在往上捲動 1.2 個單位
+                    container.scrollTop = 4000 - 2000 - ((maxY + 1.2) * NODE_SIZE_Y) - 150;
+                }
+            }, 50);
+            */
+        }
+
+        // === 新增節點機制 ===
+
+        window.spawnNode = function (sourceId, dir, tabId) {
+            if (!window.acquireOrExtendLock(tabId)) return;
+            const storage = window.tabDataStorage[tabId];
+            const sourceNd = storage.find(n => n.id === sourceId);
+            if (!sourceNd) return;
+
+            let tx = sourceNd.x, ty = sourceNd.y, type = sourceNd.type;
+
+            if (dir === 'up') {
+                ty += 1;
+            } else if (dir === 'left') {
+                tx -= 1;
+                type = 'left';
+            } else if (dir === 'right') {
+                tx += 1;
+                type = 'right';
+            }
+
+            // 預防碰撞 (理論上 UI 會阻擋，但資料還是要防)
+            if (storage.some(n => n.x === tx && n.y === ty)) return;
+
+            const newNode = {
+                id: `node_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+                x: tx, y: ty, type: type,
+                parentId: sourceId,
+                color: 'white',
+                vals: { a: '', b: '', c: '', d: '' }
+            };
+
+            // Check for matched node in cache and apply color
+            const vStr = `${newNode.vals.a || ''},${newNode.vals.b || ''},${newNode.vals.c || ''},${newNode.vals.d || ''}`;
+            if (vStr !== ',,,' && window.cachedNodeValues && window.cachedNodeValues.has(vStr)) {
+                const matchData = window.cachedNodeValues.get(vStr);
+                if (matchData && matchData.color && matchData.color !== 'white') {
+                    newNode.color = matchData.color;
+                }
+            }
+
+            storage.push(newNode);
+            renderCanvas(tabId); // 本地先畫
+            scheduleSyncToCloud();
+        }
+
+        window.undoLastNode = function (tabId) {
+            if (!window.acquireOrExtendLock(tabId)) return;
+            const storage = window.tabDataStorage[tabId] || [];
+            if (storage.length <= 1) {
+                alert('只剩下起始節點，無法再還原了！');
+                return;
+            }
+            // 直接拔掉最後塞入陣列的 Node
+            storage.pop();
+            renderCanvas(tabId);
+            scheduleSyncToCloud();
+        }
+
+        // === UI 功能補全 ===
+        window.setNodeColor = function (event, nodeId, colorClass, tabId) {
+            event.stopPropagation();
+            if (!window.acquireOrExtendLock(tabId)) return;
+            const targetNd = window.tabDataStorage[tabId].find(n => n.id === nodeId);
+            if (targetNd) {
+                if (targetNd.color === colorClass) targetNd.color = 'white';
+                else targetNd.color = colorClass;
+                renderCanvas(tabId);
+                scheduleSyncToCloud();
+            }
+        };
+
+        function syncSymmetricNode(input, nodeId, tabId) {
+            const val = input.value; const pos = input.dataset.pos;
+            const nd = window.tabDataStorage[tabId].find(n => n.id === nodeId);
+            if (!nd) return;
+
+            // 如果需要像原來一樣對稱同步： x 的對稱點是 -x
+            if (nd.x === 0) return; // 中軸無對稱
+            const targetX = -nd.x;
+            const targetY = nd.y;
+
+            const targetNd = window.tabDataStorage[tabId].find(n => n.x === targetX && n.y === targetY);
+            if (!targetNd) return;
+
+            let targetPos = pos === 'a' ? 'b' : pos === 'b' ? 'a' : pos === 'c' ? 'd' : 'c';
+            targetNd.vals[targetPos] = val;
+            // UI 會透過 re-render 自動帶上更新 (或等待 sync)，為求即時，手動呼叫：
+            renderCanvas(tabId);
+        }
+
+        function drawArrowsSVG(tabId) {
+            const container = document.getElementById(`tree-${tabId}`);
+            if (!container) return;
+            const bounds = container.querySelector('.canvas-bounds');
+            const svg = bounds.querySelector('svg.tree-svg');
+            if (!svg) return;
+
+            // 清除舊連線，保留 defs
+            svg.innerHTML = `<defs><marker id="arrow-${tabId}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#a0aec0" /></marker></defs>`;
+
+            const storage = window.tabDataStorage[tabId] || [];
+
+            // 輔助函式：畫單條線
+            const drawLine = (startX, startY, endX, endY) => {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', startX); line.setAttribute('y1', startY);
+                line.setAttribute('x2', endX); line.setAttribute('y2', endY);
+                line.setAttribute('stroke', '#a0aec0'); line.setAttribute('stroke-width', '2');
+                line.setAttribute('marker-end', `url(#arrow-${tabId})`);
+                svg.appendChild(line);
+            };
+
+            storage.forEach(nd => {
+                const nDOM = bounds.querySelector(`.node[data-id="${nd.id}"]`);
+                if (!nDOM) return;
+
+                // 1. 繪製由 parent 產生的連線
+                if (nd.parentId) {
+                    const parentNd = storage.find(n => n.id === nd.parentId);
+                    const pDOM = bounds.querySelector(`.node[data-id="${nd.parentId}"]`);
+                    if (parentNd && pDOM) {
+                        const nWidth = nDOM.offsetWidth;
+                        const nHeight = nDOM.offsetHeight;
+
+                        let startX = pDOM.offsetLeft;
+                        let startY = pDOM.offsetTop;
+                        let endX = nDOM.offsetLeft;
+                        let endY = nDOM.offsetTop;
+
+                        if (nd.y > parentNd.y) {
+                            // UPWARDS arrow: starts at center of parent, ends at Bottom of new node
+                            endY = nDOM.offsetTop + nHeight / 2 + 4;
+                        } else if (nd.y < parentNd.y) {
+                            // DOWNWARDS arrow: starts at center of parent, ends at Top of new node
+                            endY = nDOM.offsetTop - nHeight / 2 - 4;
+                        } else if (nd.x < parentNd.x) {
+                            // LEFT arrow
+                            endX = nDOM.offsetLeft + nWidth / 2 + 6;
+                        } else if (nd.x > parentNd.x) {
+                            // RIGHT arrow
+                            endX = nDOM.offsetLeft - nWidth / 2 - 6;
+                        }
+                        drawLine(startX, startY, endX, endY);
+                    }
+                }
+
+                // 2. 如果正上方 (nd.y + 1) 有節點，畫一條向上的箭頭
+                // (前提是該上方節點的 parent 不是 nd 本身，避免重複畫)
+                const upNd = storage.find(n => n.x === nd.x && n.y === nd.y + 1);
+                if (upNd && upNd.parentId !== nd.id) {
+                    const upDOM = bounds.querySelector(`.node[data-id="${upNd.id}"]`);
+                    if (upDOM) {
+                        let startX = nDOM.offsetLeft;
+                        let startY = nDOM.offsetTop;
+                        let endX = upDOM.offsetLeft;
+                        let endY = upDOM.offsetTop + upDOM.offsetHeight / 2 + 4;
+                        drawLine(startX, startY, endX, endY);
+                    }
+                }
+            });
+
+            // Reference Row connection
+            const refNodes = Array.from(bounds.querySelectorAll('.ref-node'));
+            if (refNodes.length > 0) {
+                // Find highest row of current layer (which has maxY)
+                const currentHighestNodes = storage.filter(nd => {
+                    // find max y from storage
+                    const maxCurrentY = Math.max(...storage.map(s => s.y));
+                    return nd.y === maxCurrentY;
+                });
+                
+                currentHighestNodes.forEach(fromNd => {
+                    const fromDOM = bounds.querySelector(`.node[data-id="${fromNd.id}"]`);
+                    if (!fromDOM) return;
+                    
+                    const startX = fromDOM.offsetLeft;
+                    const startY = fromDOM.offsetTop;
+                    const x = fromNd.x;
+                    
+                    const targetUp = refNodes.find(n => parseInt(n.dataset.x) === x);
+                    if (targetUp) {
+                        const endX = targetUp.offsetLeft;
+                        const endY = targetUp.offsetTop + targetUp.offsetHeight / 2 + 4;
+                        drawLine(startX, startY, endX, endY);
+                    }
+                    
+                    if (x !== 0) {
+                        const targetX = x > 0 ? x - 1 : x + 1;
+                        const targetDiag = refNodes.find(n => parseInt(n.dataset.x) === targetX);
+                        if (targetDiag) {
+                            let endX = targetDiag.offsetLeft;
+                            if (x < 0) endX -= 12;
+                            else if (x > 0) endX += 12;
+                            const endY = targetDiag.offsetTop + targetDiag.offsetHeight / 2 + 4;
+                            drawLine(startX, startY, endX, endY);
+                        }
+                    }
+                });
+            }
+        }
+
+        window.toggleRefLayer = function (event) {
+            if (event.target.checked) {
+                document.body.classList.remove('hide-ref-layer');
+            } else {
+                document.body.classList.add('hide-ref-layer');
+            }
+        };
+
+        function drawExperimentalNodes(tabId) {
+            const nMatch = tabId.match(/Lv_(\d+)/);
+            if (!nMatch) return;
+            const n = parseInt(nMatch[1]);
+            const container = document.getElementById(`tree-${tabId}`);
+            if (!container) return;
+            const bounds = container.querySelector('.canvas-bounds');
+            if (!bounds) return;
+
+            // Remove existing
+            bounds.querySelectorAll('.exp-node').forEach(n => n.remove());
+
+            if (n < 1) return; // Support from Lv_1
+            const sourceTabId = `Lv_${n - 1}`;
+            const sourceStorage = window.tabDataStorage[sourceTabId];
+            if (!sourceStorage || sourceStorage.length === 0) return;
+
+            const baseY = 2000;
+
+            let minY = Math.min(...sourceStorage.map(nd => nd.y));
+            let maxY = Math.max(...sourceStorage.map(nd => nd.y));
+            const sourceN = n - 1; // 疊加層是來自上一層
+
+            sourceStorage.forEach(sourceNd => {
+                // 如果疊加層（來源層）是偶數，顯示第二列到最後一列（只有第一列不顯示）
+                if (sourceN % 2 === 0) {
+                    if (sourceNd.y === minY) return;
+                } else {
+                    // 原本的規則：奇數層，不顯示第一列與最後一列
+                    if (sourceNd.y === minY || sourceNd.y === maxY) return;
+                }
+
+                const expNode = document.createElement('div');
+                const colorClass = sourceNd.color || 'white';
+                expNode.className = `node exp-node ${colorClass}`;
+                expNode.style.position = 'absolute';
+                expNode.style.left = `${2000 + sourceNd.x * NODE_SIZE_X}px`;
+                expNode.style.bottom = `${baseY + sourceNd.y * NODE_SIZE_Y + (NODE_SIZE_Y / 2)}px`;
+                expNode.style.transform = `translate(-50%, -50%) scale(0.85)`;
+                expNode.style.zIndex = '1';
+                expNode.style.opacity = '0.5';
+                expNode.style.pointerEvents = 'none';
+
+                const grid = document.createElement('div');
+                grid.className = 'node-grid';
+
+                ['a', 'b', 'c', 'd'].forEach(pos => {
+                    const input = document.createElement('input');
+                    input.type = 'text'; input.dataset.pos = pos;
+                    input.value = sourceNd.vals ? sourceNd.vals[pos] || '' : '';
+                    input.readOnly = true;
+                    input.style.width = Math.max(3, input.value.length + 1) + 'ch';
+                    input.style.pointerEvents = 'none';
+                    input.style.background = 'transparent';
+                    input.style.borderColor = 'transparent';
+                    grid.appendChild(input);
+                });
+
+                expNode.appendChild(grid);
+                bounds.appendChild(expNode);
+            });
+        }
+
+        function drawReferenceNodes(tabId) {
+            const nMatch = tabId.match(/Lv_(\d+)/);
+            if (!nMatch) return;
+            const n = parseInt(nMatch[1]);
+            const container = document.getElementById(`tree-${tabId}`);
+            if (!container) return;
+            const bounds = container.querySelector('.canvas-bounds');
+            if (!bounds) return;
+
+            bounds.querySelectorAll('.ref-node').forEach(n => n.remove());
+            bounds.querySelectorAll('.ref-label').forEach(n => n.remove());
+
+            if (n < 2) return; 
+
+            const sourceN = n % 2 === 0 ? n - 1 : n - 2;
+            const sourceTabId = `Lv_${sourceN}`;
+            const sourceStorage = window.tabDataStorage[sourceTabId];
+            if (!sourceStorage || sourceStorage.length === 0) return;
+
+            const baseY = 2000;
+            const maxY = Math.max(...sourceStorage.map(nd => nd.y));
+            const targetNodes = sourceStorage.filter(nd => nd.y === maxY);
+
+            if (targetNodes.length === 0) return;
+
+            // 計算現有圖層的最高點 (最大 Y)，參照列將懸空放置在其上方，留出一段距離
+            const currentStorage = window.tabDataStorage[tabId] || [];
+            const currentMaxY = currentStorage.length > 0 ? Math.max(...currentStorage.map(nd => nd.y)) : 0;
+            const refRowYOffset = currentMaxY + 1.2; // 往上墊高 1.2 個單位的間隔
+
+            targetNodes.forEach(sourceNd => {
+                const refNode = document.createElement('div');
+                const colorClass = sourceNd.color || 'white';
+                refNode.className = `node ref-node ${colorClass}`;
+                refNode.dataset.id = `ref_${sourceNd.id}`;
+                refNode.dataset.x = sourceNd.x;
+                refNode.dataset.y = 'ref'; // Mark as ref row
+                refNode.style.position = 'absolute';
+                refNode.style.left = `${2000 + sourceNd.x * NODE_SIZE_X}px`;
+                refNode.style.bottom = `${baseY + refRowYOffset * NODE_SIZE_Y}px`;
+
+                const grid = document.createElement('div');
+                grid.className = 'node-grid';
+
+                ['a', 'b', 'c', 'd'].forEach(pos => {
+                    const input = document.createElement('input');
+                    input.type = 'text'; input.dataset.pos = pos;
+                    input.value = sourceNd.vals ? sourceNd.vals[pos] || '' : '';
+                    input.readOnly = true;
+                    input.style.width = Math.max(3, input.value.length + 1) + 'ch';
+                    grid.appendChild(input);
+                });
+
+                refNode.appendChild(grid);
+                bounds.appendChild(refNode);
+            });
+
+            const minX = Math.min(...targetNodes.map(nd => nd.x));
+            const maxX = Math.max(...targetNodes.map(nd => nd.x));
+            const centerX = (minX + maxX) / 2;
+
+            const label = document.createElement('div');
+            label.className = 'ref-label';
+            label.innerHTML = `<span>[ 參照自 Lv_${sourceN} 的最後一列 ]</span>`;
+            label.style.left = `${2000 + centerX * NODE_SIZE_X}px`;
+            label.style.bottom = `${baseY + refRowYOffset * NODE_SIZE_Y + 160}px`;
+            label.style.transform = `translate(-50%, 0)`;
+            bounds.appendChild(label);
+        }
+
+        window.createTab = function (tabIdName = null, triggerSync = true) {
+            let tabId = tabIdName;
+            if (!tabId) {
+                let newNum = 0;
+                while (tabsList.includes(`Lv_${newNum}`)) newNum++;
+                tabId = `Lv_${newNum}`;
+            }
+
+            if (!tabsList.includes(tabId)) {
+                const currentActiveId = tabsList[currentIndex];
+                tabsList.push(tabId);
+                tabsList.sort((a, b) => parseInt(a.split('_')[1] || '0') - parseInt(b.split('_')[1] || '0'));
+                if (currentActiveId) currentIndex = tabsList.indexOf(currentActiveId);
+            }
+
+            // 初始化資料庫：
+            // 【修正】只有在雲端尚未載入（isCloudLoaded=false）且資料為空時才建立 root 節點，
+            // 避免 applyDataToUI 呼叫 createTab 時把即將被賦值的 tabDataStorage 搶先設為空資料。
+            if (!window.tabDataStorage[tabId] || window.tabDataStorage[tabId].length === 0) {
+                if (!isCloudLoaded) {
+                    // 雲端資料尚未載入，暫不初始化（等 applyDataToUI 來填充）
+                    window.tabDataStorage[tabId] = [];
+                } else {
+                    // 由使用者手動新增分頁，或雲端確實沒有此 tab 的資料，建立起始節點
+                    window.tabDataStorage[tabId] = [{
+                        id: `root_${Date.now()}`, x: 0, y: 0, type: 'center', parentId: null, color: 'white', vals: { a: '', b: '', c: '', d: '' }
+                    }];
+                }
+            }
+
+            const tabContent = document.createElement('div');
+            tabContent.id = tabId; tabContent.className = 'tab-content';
+
+            const controlsDiv = document.createElement('div');
+            controlsDiv.style.textAlign = 'center'; controlsDiv.style.padding = '10px';
+            controlsDiv.style.borderBottom = '1px solid #e2e8f0';
+
+            const undoNodeBtn = document.createElement('button');
+            undoNodeBtn.className = 'btn undo';
+            undoNodeBtn.innerHTML = '⬇️ 刪除最後新增的節點 (還原)';
+            undoNodeBtn.onclick = () => window.undoLastNode(tabId);
+            controlsDiv.appendChild(undoNodeBtn);
+
+            const treeContainer = document.createElement('div');
+            treeContainer.className = 'tree-container'; treeContainer.id = `tree-${tabId}`;
+
+            const bounds = document.createElement('div');
+            bounds.className = 'canvas-bounds';
+
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('class', 'tree-svg');
+            bounds.appendChild(svg);
+
+            treeContainer.appendChild(bounds);
+            tabContent.appendChild(controlsDiv);
+            tabContent.appendChild(treeContainer);
+            document.getElementById('tab-contents').appendChild(tabContent);
+
+            if (!tabIdName) {
+                window.switchTab(tabsList.length - 1);
+            }
+
+            renderCanvas(tabId);
+
+            if (triggerSync) scheduleSyncToCloud();
+            return tabId;
+        };
+
+        window.switchTab = function (index) {
+            if (index < 0 || index >= tabsList.length) return;
+            currentIndex = index;
+            const tabId = tabsList[currentIndex];
+
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.toggle('active', content.id === tabId);
+            });
+
+            document.getElementById('current-tab-label').innerText = tabId.replace('_', ' ');
+            document.getElementById('prev-btn').disabled = (currentIndex === 0);
+            document.getElementById('next-btn').disabled = (currentIndex === tabsList.length - 1);
+
+            const nMatch = tabId.match(/Lv_(\d+)/);
+            const refToggleContainer = document.getElementById('refLayerToggleContainer');
+            const refToggleText = document.getElementById('refLayerToggleText');
+            if (nMatch && parseInt(nMatch[1]) >= 1) {
+                const n = parseInt(nMatch[1]);
+                refToggleContainer.style.display = 'flex';
+                refToggleText.innerText = `疊加顯示 Lv_${n - 1}`;
+            } else {
+                refToggleContainer.style.display = 'none';
+            }
+
+            renderCanvas(tabId);
+
+            // 切換分頁時進行一次定位
+            setTimeout(() => {
+                const container = document.getElementById(`tree-${tabId}`);
+                if (container) {
+                    let maxY = 0;
+                    (window.tabDataStorage[tabId] || []).forEach(nd => { if (nd.y > maxY) maxY = nd.y; });
+                    container.scrollLeft = 2000 - (container.clientWidth / 2);
+                    container.scrollTop = 4000 - 2000 - ((maxY + 1.2) * NODE_SIZE_Y) - 150;
+                }
+            }, 50);
+        };
+
+        window.prevTab = function () { window.switchTab(currentIndex - 1); };
+        window.nextTab = function () { window.switchTab(currentIndex + 1); };
+
+        // ================= 刪除整個分頁邏輯 =================
+        window.openDeleteModal = function () {
+            if (tabsList.length <= 1) { alert("至少需要保留一個分頁！"); return; }
+            const tabId = tabsList[currentIndex];
+            if (!window.acquireOrExtendLock(tabId)) { alert("目前有其他人正在編輯此分頁，無法刪除！"); return; }
+            document.getElementById('deleteTargetName').innerText = tabId.replace('_', ' ');
+            const input = document.getElementById('deleteConfirmInput');
+            input.value = ""; window.checkDeleteConfirm("");
+            document.getElementById('deleteModal').style.display = 'flex';
+            setTimeout(() => input.focus(), 100);
+        };
+
+        window.checkDeleteConfirm = function (val) {
+            const btn = document.getElementById('confirmDeleteBtn');
+            if (val === 'DELETE') { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
+            else { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.cursor = 'not-allowed'; }
+        };
+
+        window.confirmDeleteTab = function () {
+            const tabId = tabsList[currentIndex];
+            const tabContent = document.getElementById(tabId);
+            if (tabContent) tabContent.remove();
+            tabsList.splice(currentIndex, 1);
+
+            if (lastSyncState && lastSyncState[tabId]) {
+                delete lastSyncState[tabId];
+                updateDoc(docRef, { [`state.${tabId}`]: deleteField(), [`locks.${tabId}`]: deleteField() }).catch(e => { });
+            }
+
+            if (currentIndex >= tabsList.length) currentIndex = tabsList.length - 1;
+            document.getElementById('deleteModal').style.display = 'none';
+            window.switchTab(currentIndex);
+            scheduleSyncToCloud();
+        };
+
+        // 其他綁定
+        window.exportToImage = function () {
+            const activeTabElement = document.querySelector('.tab-content.active');
+            if (!activeTabElement) return;
+
+            // 隱藏按鈕與色彩選擇器
+            activeTabElement.querySelectorAll('.arrow-btn').forEach(b => b.style.display = 'none');
+            activeTabElement.querySelectorAll('.color-picker').forEach(b => b.style.display = 'none');
+
+            const treeContainer = activeTabElement.querySelector('.tree-container');
+            const canvasBounds = activeTabElement.querySelector('.canvas-bounds');
+            if (!treeContainer || !canvasBounds) return;
+
+            // ── 修正 1：移除 tree-container 白色背景 ──
+            const origBg = treeContainer.style.background;
+            treeContainer.style.background = 'transparent';
+
+            // ── 將所有節點的 bottom 定位轉為 top (針對 html2canvas 的 bottom bug) ──
+            const exportFixes = [];
+            canvasBounds.querySelectorAll('.node, .exp-node, .ref-node, .ref-label').forEach(el => {
+                exportFixes.push({
+                    el, 
+                    bottom: el.style.bottom, 
+                    top: el.style.top,
+                    left: el.style.left
+                });
+
+                // 因為 html2canvas 無法準確處理 bottom + transform 的組合
+                // 所以先換成絕對的 top 配合預設的 transform 即可完美截圖
+                if (el.style.bottom && el.style.bottom !== 'auto') {
+                    el.style.top = el.offsetTop + 'px';
+                    el.style.bottom = 'auto';
+                }
+
+                // 針對特殊的虛線參照列與標籤，既然套件強制發生了位移，我們就反向給予等量偏移來抵銷
+                // 註：exp-node (疊加層) 顯示正常，不可加上此偏移
+                const w = el.offsetWidth;
+                const h = el.offsetHeight;
+                if (el.classList.contains('ref-node')) {
+                    el.style.left = (parseFloat(el.style.left || 0) + w / 2) + 'px';
+                    el.style.top = (parseFloat(el.style.top || 0) + h / 2) + 'px';
+                } else if (el.classList.contains('ref-label')) {
+                    // 標籤原本就沒有發生 Y 軸偏移 bug，所以只補償 X 軸即可
+                    el.style.left = (parseFloat(el.style.left || 0) + w / 2) + 'px';
+                }
+            });
+
+            // ── 修正針對 Html2Canvas 縮放環境下 input 內黑體字下墜且被裁切的 Bug ──
+            const fixInputStyle = document.createElement('style');
+            fixInputStyle.id = '__export_input_fix__';
+            // 使用 flex 取代 padding 進行強位置中，避免 input 高度縮小造成裁切
+            fixInputStyle.textContent = `
+                .ref-node input, .exp-node input {
+                    line-height: normal !important;
+                    height: 24px !important;
+                    padding: 0 !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                }
+            `;
+            document.head.appendChild(fixInputStyle);
+
+            html2canvas(treeContainer, { backgroundColor: null }).then(fullCanvas => {
+                // 掃描像素找出有內容的區域進行裁切
+                const ctx = fullCanvas.getContext('2d');
+                const w = fullCanvas.width, h = fullCanvas.height;
+                const data = ctx.getImageData(0, 0, w, h).data;
+
+                let minY = h, minX = w, maxY = 0, maxX = 0;
+                for (let y = 0; y < h; y++) {
+                    for (let x = 0; x < w; x++) {
+                        if (data[(y * w + x) * 4 + 3] > 0) {
+                            if (y < minY) minY = y;
+                            if (y > maxY) maxY = y;
+                            if (x < minX) minX = x;
+                            if (x > maxX) maxX = x;
+                        }
+                    }
+                }
+
+                const pad = 20;
+                const cropX = Math.max(0, minX - pad);
+                const cropY = Math.max(0, minY - pad);
+                const cropW = Math.min(w, maxX + pad) - cropX;
+                const cropH = Math.min(h, maxY + pad) - cropY;
+
+                const out = document.createElement('canvas');
+                out.width = cropW; out.height = cropH;
+                out.getContext('2d').drawImage(fullCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+                const link = document.createElement('a');
+                link.download = `${activeTabElement.id}_${Date.now()}.png`;
+                link.href = out.toDataURL('image/png');
+                link.click();
+            }).finally(() => {
+                treeContainer.style.background = origBg;
+                exportFixes.forEach(({ el, bottom, top, left }) => {
+                    el.style.bottom = bottom;
+                    el.style.top = top;
+                    el.style.left = left;
+                });
+                document.getElementById('__export_input_fix__')?.remove();
+                activeTabElement.querySelectorAll('.arrow-btn').forEach(b => b.style.display = '');
+                activeTabElement.querySelectorAll('.color-picker').forEach(b => b.style.display = '');
+            });
+        };
+
+        window.saveData = () => {
+            const blob = new Blob([JSON.stringify(getAppState(), null, 2)], { type: "application/json" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `矩形紀錄_${new Date().toISOString().slice(0, 10)}.json`;
+            link.click();
+        };
+
+        window.loadData = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    applyDataToUI(JSON.parse(e.target.result));
+                    scheduleSyncToCloud();
+                    alert("進度匯入成功！已同步至雲端。");
+                } catch (err) { alert("檔案格式錯誤或損毀。"); }
+            };
+            reader.readAsText(file);
+            event.target.value = "";
+        };
+
+        window.onclick = function (event) {
+            if (event.target === document.getElementById('helpModal')) document.getElementById('helpModal').style.display = "none";
+            if (event.target === document.getElementById('deleteModal')) document.getElementById('deleteModal').style.display = "none";
+        }
+
+        // 加載 node.html 的資料建立快取 (供比對高亮使用)
+        window.cachedNodeValues = new Map();
+        const docRefNode = doc(db, 'research_data', 'board_state');
+        getDoc(docRefNode).then(snap => {
+            if (snap.exists()) {
+                const dbData = snap.data();
+                if (dbData.state) {
+                    Object.values(dbData.state).forEach(tab => {
+                        if (tab.rows) {
+                            Object.values(tab.rows).forEach(row => {
+                                if (row.nodes) {
+                                    Object.values(row.nodes).forEach(node => {
+                                        if (node.vals) {
+                                            const a = node.vals.a || '';
+                                            const b = node.vals.b || '';
+                                            const c = node.vals.c || '';
+                                            const d = node.vals.d || '';
+                                            if (a || b || c || d) {
+                                                const vStr = `${a},${b},${c},${d}`;
+                                                window.cachedNodeValues.set(vStr, {
+                                                    color: node.color || 'white'
+                                                });
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    });
+                }
+
+                // Re-render current tab if it has been loaded
+                if (tabsList.length > 0 && currentIndex < tabsList.length) {
+                    renderCanvas(tabsList[currentIndex]);
+                }
+            }
+        }).catch(err => {
+            console.error("Failed to fetch node.html cache:", err);
+        });
+
+        // 初始化連線
+        setSyncStatus('syncing');
+        onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const dbData = docSnap.data();
+                if (dbData.locks) { currentLocks = dbData.locks; updateLockUI(); }
+                if (dbData.state) {
+                    if (!hasPendingChanges) applyDataToUI(dbData.state);
+                    else lastSyncState = JSON.parse(JSON.stringify(dbData.state));
+                }
+                setSyncStatus('online');
+            } else {
+                // 雲端文件不存在（全新文件），才允許初始化並建立預設 Tab
+                isCloudLoaded = true; // 確認雲端狀態已知（文件不存在也算已知）
+                if (tabsList.length === 0) window.createTab();
+            }
+            // 【關鍵】標記雲端資料已成功載入，解除 sync 防護
+            if (!isCloudLoaded) {
+                isCloudLoaded = true;
+                console.log('isCloudLoaded = true，解除 sync 防護。');
+            }
+        }, (error) => {
+            console.error("Firestore Error:", error);
+            setSyncStatus('error');
+            // 連線錯誤時，允許離線建立 Tab（但不 sync）
+            if (!isCloudLoaded) isCloudLoaded = true;
+            if (tabsList.length === 0) window.createTab(null, false);
+        });
+
+    </script>
+</body>
+
+</html>

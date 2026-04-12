@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4元數 節點紀錄系列主題</title>
+
+    <!-- Font Configuration（本地版） -->
+    <link href="./fonts/fonts.css" rel="stylesheet">
+
+    <style>
+        /* Reset and Base Styles */
+        :root {
+            --bg-gradient: linear-gradient(135deg, #090a0f 0%, #151a28 50%, #160a2b 100%);
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-shadow: rgba(0, 0, 0, 0.3);
+            --text-main: #f0f2f5;
+            --text-muted: #94a3b8;
+            --accent-1: #6366f1;
+            /* Indigo */
+            --accent-2: #ec4899;
+            /* Pink */
+            --accent-3: #14b8a6;
+            /* Teal */
+            --accent-4: #f59e0b;
+            /* Amber */
+            --hover-bg: rgba(255, 255, 255, 0.08);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', 'Noto Sans TC', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+            padding: 2rem;
+        }
+
+        /* Animated background blobs */
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            z-index: -1;
+            opacity: 0.6;
+            animation: float 20s infinite ease-in-out alternate;
+        }
+
+        .blob-1 {
+            width: 400px;
+            height: 400px;
+            background: rgba(99, 102, 241, 0.3);
+            top: 10%;
+            left: 10%;
+            animation-delay: 0s;
+        }
+
+        .blob-2 {
+            width: 500px;
+            height: 500px;
+            background: rgba(236, 72, 153, 0.25);
+            bottom: 5%;
+            right: 5%;
+            animation-delay: -5s;
+        }
+
+        .blob-3 {
+            width: 300px;
+            height: 300px;
+            background: rgba(20, 184, 166, 0.2);
+            top: 40%;
+            left: 50%;
+            transform: translateX(-50%);
+            animation-delay: -10s;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+
+            50% {
+                transform: translate(30px, 50px) scale(1.1);
+            }
+
+            100% {
+                transform: translate(-20px, 20px) scale(0.9);
+            }
+        }
+
+        /* Page Header */
+        header {
+            text-align: center;
+            margin-bottom: 4rem;
+            animation: fadeInDown 1s ease-out;
+        }
+
+        .title {
+            font-size: 3.5rem;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            margin-bottom: 1rem;
+            background: linear-gradient(to right, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .subtitle {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            font-weight: 300;
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* Main Grid Layout */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 2.5rem;
+            width: 100%;
+            max-width: 1000px;
+            perspective: 1000px;
+        }
+
+        /* Section Column */
+        .section-column {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            animation: fadeInUp 1s ease-out backwards;
+        }
+
+        .section-column:nth-child(1) {
+            animation-delay: 0.2s;
+        }
+
+        .section-column:nth-child(2) {
+            animation-delay: 0.4s;
+        }
+
+        .section-header {
+            font-size: 1.5rem;
+            font-weight: 700;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--glass-border);
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            position: relative;
+        }
+
+        .section-header::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 50px;
+            height: 2px;
+            background: var(--accent-1);
+        }
+
+        .column-2 .section-header::after {
+            background: var(--accent-3);
+        }
+
+        .icon-wrapper {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+        }
+
+        .column-1 .icon-wrapper svg {
+            color: var(--accent-1);
+        }
+
+        .column-2 .icon-wrapper svg {
+            color: var(--accent-3);
+        }
+
+        /* Cards */
+        .link-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 6px var(--glass-shadow);
+        }
+
+        .link-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+            transform: translateX(-100%);
+            transition: transform 0.6s ease;
+        }
+
+        .link-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            background: var(--hover-bg);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4), 0 0 15px rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .link-card:hover::before {
+            transform: translateX(100%);
+        }
+
+        .card-number {
+            font-size: 1.25rem;
+            font-weight: 800;
+            color: rgba(255, 255, 255, 0.2);
+            font-family: 'Outfit', sans-serif;
+            width: 32px;
+            text-align: center;
+            transition: color 0.3s ease;
+        }
+
+        .link-card:hover .card-number {
+            color: var(--text-main);
+        }
+
+        .card-content {
+            flex: 1;
+        }
+
+        .card-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            letter-spacing: 0.05em;
+        }
+
+        .card-desc {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            font-weight: 300;
+            transition: color 0.3s ease;
+        }
+
+        .link-card:hover .card-desc {
+            color: #cbd5e1;
+        }
+
+        .card-arrow {
+            opacity: 0;
+            transform: translateX(-10px);
+            transition: all 0.3s ease;
+            color: var(--accent-1);
+        }
+
+        .column-2 .card-arrow {
+            color: var(--accent-3);
+        }
+
+        .column-1 .card-3 .card-arrow {
+            color: var(--accent-2);
+        }
+
+        .column-1 .card-1 {
+            border-left: 3px solid transparent;
+        }
+
+        .column-1 .card-1:hover {
+            border-left-color: var(--accent-1);
+        }
+
+        .column-1 .card-2 {
+            border-left: 3px solid transparent;
+        }
+
+        .column-1 .card-2:hover {
+            border-left-color: var(--accent-4);
+        }
+
+        .column-1 .card-3 {
+            border-left: 3px solid transparent;
+        }
+
+        .column-1 .card-3:hover {
+            border-left-color: var(--accent-2);
+        }
+
+        .column-2 .card-1 {
+            border-left: 3px solid transparent;
+        }
+
+        .column-2 .card-1:hover {
+            border-left-color: var(--accent-3);
+        }
+
+        .column-2 .card-2 {
+            border-left: 3px solid transparent;
+        }
+
+        .column-2 .card-2:hover {
+            border-left-color: var(--accent-4);
+        }
+
+        .column-2 .card-2 .card-arrow {
+            color: var(--accent-4);
+        }
+
+        .column-2 .card-3 {
+            border-left: 3px solid transparent;
+        }
+
+        .column-2 .card-3:hover {
+            border-left-color: var(--accent-2);
+        }
+
+        .column-2 .card-3 .card-arrow {
+            color: var(--accent-2);
+        }
+
+        .link-card:hover .card-arrow {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        /* Keyframes */
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Footer */
+        footer {
+            margin-top: 5rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            opacity: 0.8;
+            animation: fadeInUp 1s ease-out 0.6s backwards;
+        }
+
+        @media (max-width: 768px) {
+            .title {
+                font-size: 2.5rem;
+            }
+
+            .grid-container {
+                gap: 2rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Decorative background elements -->
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+
+    <header>
+        <h1 class="title">4元數 推演工具總覽</h1>
+        <p class="subtitle">選擇推演模型：方格拓展的遞迴探索、或是矩形棋盤的節點觀測。</p>
+    </header>
+
+    <main class="grid-container">
+
+        <!-- Column 1: Square Board -->
+        <div class="section-column column-1">
+            <h2 class="section-header">
+                <div class="icon-wrapper">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="3" y1="9" x2="21" y2="9"></line>
+                        <line x1="3" y1="15" x2="21" y2="15"></line>
+                        <line x1="9" y1="3" x2="9" y2="21"></line>
+                        <line x1="15" y1="3" x2="15" y2="21"></line>
+                    </svg>
+                </div>
+                正方形棋盤
+            </h2>
+
+            <a href="node.html" class="link-card card-1">
+                <span class="card-number">01</span>
+                <div class="card-content">
+                    <div class="card-title">節點登錄</div>
+                    <div class="card-desc">基礎數值遞迴與共編同步紀錄</div>
+                </div>
+                <svg class="card-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+            </a>
+
+            <a href="edge.html" class="link-card card-2">
+                <span class="card-number">02</span>
+                <div class="card-content">
+                    <div class="card-title">邊緣觀察</div>
+                    <div class="card-desc">單側邊界節點生長規則推導</div>
+                </div>
+                <svg class="card-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+            </a>
+
+            <a href="algebra.html" class="link-card card-3">
+                <span class="card-number">03</span>
+                <div class="card-content">
+                    <div class="card-title">代數模式</div>
+                    <div class="card-desc">代數推演與高階四元數模型</div>
+                </div>
+                <svg class="card-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+            </a>
+        </div>
+
+        <!-- Column 2: Rectangular Board -->
+        <div class="section-column column-2">
+            <h2 class="section-header">
+                <div class="icon-wrapper">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="6" width="20" height="12" rx="2" ry="2"></rect>
+                        <line x1="2" y1="12" x2="22" y2="12"></line>
+                        <line x1="8" y1="6" x2="8" y2="18"></line>
+                        <line x1="16" y1="6" x2="16" y2="18"></line>
+                    </svg>
+                </div>
+                矩形棋盤
+            </h2>
+
+            <a href="rect-node.html" class="link-card card-1">
+                <span class="card-number">01</span>
+                <div class="card-content">
+                    <div class="card-title">n+1*n 節點</div>
+                    <div class="card-desc">動態長寬網格結構紀錄表 (建構中)</div>
+                </div>
+                <svg class="card-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+            </a>
+
+            <a href="rect-node-p2.html" class="link-card card-2">
+                <span class="card-number">02</span>
+                <div class="card-content">
+                    <div class="card-title">n+2*n 節點</div>
+                    <div class="card-desc">動態長寬網格結構紀錄表 (建構中)</div>
+                </div>
+                <svg class="card-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+            </a>
+
+            <a href="chess.html" class="link-card card-3">
+                <span class="card-number">03</span>
+                <div class="card-content">
+                    <div class="card-title">對弈程式</div>
+                    <div class="card-desc">矩形棋盤對弈環境</div>
+                </div>
+                <svg class="card-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+            </a>
+        </div>
+
+    </main>
+
+    <footer>
+        <p>DoubleChess Research Environment &copy; 2026. All rights reserved.</p>
+    </footer>
+
+</body>
+
+</html>
