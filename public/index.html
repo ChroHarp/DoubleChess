@@ -351,6 +351,18 @@
             color: var(--accent-2);
         }
 
+        .column-2 .card-4 {
+            border-left: 3px solid transparent;
+        }
+
+        .column-2 .card-4:hover {
+            border-left-color: #f43f5e;
+        }
+
+        .column-2 .card-4 .card-arrow {
+            color: #f43f5e;
+        }
+
         .link-card:hover .card-arrow {
             opacity: 1;
             transform: translateX(0);
@@ -517,8 +529,21 @@
             <a href="chess.html" class="link-card card-3">
                 <span class="card-number">03</span>
                 <div class="card-content">
-                    <div class="card-title">對弈程式</div>
-                    <div class="card-desc">矩形棋盤對弈環境</div>
+                    <div class="card-title">雙線禁手</div>
+                    <div class="card-desc">矩形棋盤雙線禁手對弈</div>
+                </div>
+                <svg class="card-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+            </a>
+
+            <a href="chess-triple.html" class="link-card card-4">
+                <span class="card-number">04</span>
+                <div class="card-content">
+                    <div class="card-title">三線禁手</div>
+                    <div class="card-desc">矩形棋盤三線禁手對弈 · 2×3 矩陣</div>
                 </div>
                 <svg class="card-arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
